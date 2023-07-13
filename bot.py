@@ -1,21 +1,24 @@
 import asyncio
+from collections.abc import Callable, Iterable, Mapping
+from threading import Timer
+import threading
+from typing import Any
 import discord
 from discord.ext import commands
+import time
 import os
 import openai
-from prompt import initial_prompt 
+
+from promt_creation import get_prompt
 from api_secrets import *
 from logger import Logger, UserLogger
 from queue import Queue
 
 
 
-
-
-
-class GPTBot(discord.Client):
+class GPTBot():
     
-    def __init__(self, bot_token, gpt_api_key):
+    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_prompt = False):
         self.__bot_token = bot_token
         baselog = Logger(True, True)
         openai.api_key = gpt_api_key
@@ -23,17 +26,24 @@ class GPTBot(discord.Client):
         self.loggers = {
             "base": baselog
         }
+        self.init_prompt = get_prompt(bot_name, streamer_name, art_styles, test_prompt)
         self.conversationLogs = {
             "base": [
-                        {"role": "system", "content": initial_prompt},
+                        {"role": "system", "content": self.init_prompt},
                     ]
         }
-        self.task = None
-        self.message_queue = Queue()
+        self.bot_name = bot_name
+        self.timer_duration = timer_duration
+        self.tasks = {}
         
+    def awaitingResponse(self, user):
+        return self.conversationLogs[user][-1]["role"] == "user"
         
+    def collectMessage(self,message, user, sender):
+        user = user
+        sender = sender
+        sendMessage = message
         
-    def collectMessage(self,sendMessage, user, sender):
         if not user in self.loggers.keys():
             self.loggers.update({user: UserLogger(user, True, True)})
         if not user in self.conversationLogs.keys():
@@ -45,18 +55,29 @@ class GPTBot(discord.Client):
             self.loggers[user].userReply(sendMessage)
             self.conversationLogs[user].append({"role": "user", "content": sendMessage})
        
-    @asyncio.coroutine        
+      
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
         self.collectMessage(user_prompt, name, "user")
-        prompt = self.conversationLogs[name]
-        await asyncio.sleep(10) #wait for further messages
+        if len(self.tasks) > 0:
+            for user, task in self.tasks.items():
+                if task is not None:
+                    self.conversationLogs[name][-1]["content"] = self.conversationLogs[name][-1]["content"] + "\n" + user_prompt # this works
+                    task.cancel()
+        
+        self.tasks[name] = await asyncio.create_task(self.gpt_sending(message.author))
+        
+    async def gpt_sending(self,author):
+        user = author.name
+        await asyncio.sleep(self.timer_duration) #wait for further messages
+        if not self.awaitingResponse(user):
+            return
         response = openai.ChatCompletion.create(
             model=self.MODEL_NAME,
-            messages= prompt,
+            messages= self.conversationLogs[user],
             max_tokens=256,  # maximal amout of tokens, one token roughly equates to 4 chars
-            temperature=0.2,  # control over creativity
+            temperature=0.3,  # control over creativity
             n=1, # amount of answers
             top_p=1,
             frequency_penalty=0,
@@ -67,13 +88,8 @@ class GPTBot(discord.Client):
         response_message = response['choices'][0]['message']
         reply = response_message['content']
         # Die Antwort an den Absender der DM zurückschicken
-        self.collectMessage(reply, name, "gpt")
-        await message.author.send(reply)
-        self.task = None
-        self.temp_message = None
-                
-        
-        
+        self.collectMessage(reply, user,"gpt")
+        await author.send(reply)
         
     def runBot(self):
         intents = discord.Intents.default()
@@ -81,22 +97,16 @@ class GPTBot(discord.Client):
         bot = commands.Bot(command_prefix='!', intents=intents) 
         
         
-           
         @bot.event
         async def on_ready():
-            self.loggers["base"].passing(f"Angemeldet als {bot.user.name}")
+            self.loggers["base"].passing(f"Logged in as {bot.user.name}, given name: {self.bot_name}")
 
         @bot.event
         async def on_message(message):
             if isinstance(message.channel, discord.DMChannel) and message.author != bot.user:
-                if self.task is None:
-                    self.task = asyncio.create_task(self.messageHandler(message))
-                else:
-                    self.task.cancel()
-                    self.task = asyncio.create_task(self.messageHandler(message))
-            await self.task   
+                await self.messageHandler(message)
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY)
+    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", test_prompt= True, timer_duration=10)
     bot.runBot()

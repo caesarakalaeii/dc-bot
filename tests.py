@@ -1,6 +1,5 @@
 from bot import GPTBot
 
 
-bot = GPTBot("test", "test")
+bot = GPTBot()
 
-bot.collectMessage("Hello", "Caesar", "user")
