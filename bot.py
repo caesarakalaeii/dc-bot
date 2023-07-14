@@ -35,8 +35,10 @@ class ConversationHandler():
         self.conversation[-1]["content"] + "\n" + message
         
     def checkDir(self):
-        if not os.path.exists(self.file_path):
+        try:
             os.mkdir(self.dir_path)
+        except FileExistsError:
+            return
         
     def writeConversation(self):
         with open(self.file_path, "w") as f:
@@ -49,6 +51,10 @@ class ConversationHandler():
                 self.conversation = json.loads(f.read())
         else: raise FileNotFoundError
 
+    def deleteConversation(self):
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+        else: raise FileNotFoundError
 
 class GPTBot():
     
@@ -86,15 +92,38 @@ class GPTBot():
         self.logger.userReply(user, message)
         
         
-       
-      
+    async def check_command(self, message: str, author):
+        reply = None
+        if message.startswith("!clear_logs"):
+            for conversation in self.conversations:
+                if conversation.user == author.name:
+                    self.logger.warning("Clearing Message Log for {}".format(author.name))
+                    conversation.deleteConversation()
+                    del self.conversations[self.conversations.index(conversation)]
+            reply = "Conversatoin deleted"
+        elif message.startswith("!toggle_testmode"):
+            self.test_mode= not self.test_mode
+            reply = "Test Mode is now: {}".format(self.test_mode)
+        elif message.startswith("!command_help"):
+            reply = """
+            The Following commands are available:
+            !clear_logs: Deletes Conversation
+            !toggle_testmode: Enables testmode for shorter response time. WARNING: This will also set the initital prompt, so don't clear the logs when you want to test the prompt!
+            """
+        if not reply == None:
+            await author.send(reply)
+            return True
+        
+        return False
     async def messageHandler(self, message):
         user_prompt = message.content
+        name = message.author.name
+        if await self.check_command(user_prompt, message.author):
+            return
         media = message.attachments
         media_amount = len(media)
         if media_amount > 0:
             user_prompt = "[{} amazing Media Attachements] \n".format(media_amount) + user_prompt
-        name = message.author.name
         self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for user, task in self.tasks.items():
@@ -150,5 +179,5 @@ class GPTBot():
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", timer_duration=30)
+    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True)
     bot.runBot()
