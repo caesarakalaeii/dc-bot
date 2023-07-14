@@ -68,7 +68,7 @@ class GPTBot():
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
-        
+        self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for user, task in self.tasks.items():
                 if task is not None:
@@ -76,12 +76,8 @@ class GPTBot():
                         
                         conversation.appendUserMessage(message)
                         task.cancel()
-                else:        
-                    self.collectMessage(user_prompt, name, "user")
-            self.tasks[name] = await asyncio.create_task(self.gpt_sending(message.author))
-        else: 
-            self.collectMessage(user_prompt, name, "user")
-            self.tasks[name] = await asyncio.create_task(self.gpt_sending(message.author))
+           
+        self.tasks[name] = await asyncio.create_task(self.gpt_sending(message.author))
         
     async def gpt_sending(self,author):
         user = author.name
@@ -125,5 +121,5 @@ class GPTBot():
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", test_prompt= True, timer_duration=10)
+    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", timer_duration=10)
     bot.runBot()
