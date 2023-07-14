@@ -150,5 +150,5 @@ class GPTBot():
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True)
+    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", timer_duration=30)
     bot.runBot()
