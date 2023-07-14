@@ -57,29 +57,17 @@ class Logger():
             print("\033[94m {}\033[00m" .format("Info:"),"\033[94m {}\033[00m" .format(skk))
         if self.file_logging:
             logging.debug(skk)
-            
-            
-            
-class UserLogger(Logger):
-    
-    def __init__(self, user_name = None, console_log = False, file_logging = False, file_URI = None, level = logging.DEBUG, override = False):
-        self.user_name = user_name
-        if file_URI == None:
-            file_URI = "{}".format(user_name)+"{}".format(time.asctime(time.localtime()))
-        file_URI = file_URI.replace(" ", "_").replace(":", "-")
-        super().__init__( console_log, file_logging, file_URI, level, override, user_name)
-    
-    def getuser(self):
-        return self.user_name
-    
-    def chatReply(self,skk):#blue
+    def chatReply(self,user,skk):#blue
         if self.console_log: 
-            print("\033[94m {}\033[00m" .format("Alex:"),"\033[94m {}\033[00m" .format(skk))
+            print("\033[94m {}\033[00m" .format("Alex to {}:".format(user)),"\033[94m {}\033[00m" .format(skk))
         if self.file_logging:
-            logging.debug(skk)
+            logging.debug("Alex to {}: ".format(user)+skk)
             
-    def userReply(self,skk):#green
+    def userReply(self,user,skk):#green
         if self.console_log: 
-            print("\033[92m {}:\033[00m" .format(self.user_name),"\033[92m {}\033[00m" .format(skk))
+            print("\033[92m {}:\033[00m" .format(user),"\033[92m {}\033[00m" .format(skk))
         if self.file_logging:
-            logging.debug(skk)
+            logging.debug(user + ": " + skk)
+            
+            
+            
