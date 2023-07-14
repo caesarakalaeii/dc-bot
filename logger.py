@@ -60,14 +60,10 @@ class Logger():
     def chatReply(self,user,skk):#blue
         if self.console_log: 
             print("\033[94m {}\033[00m" .format("Alex to {}:".format(user)),"\033[94m {}\033[00m" .format(skk))
-        if self.file_logging:
-            logging.debug("Alex to {}: ".format(user)+skk)
             
     def userReply(self,user,skk):#green
         if self.console_log: 
             print("\033[92m {}:\033[00m" .format(user),"\033[92m {}\033[00m" .format(skk))
-        if self.file_logging:
-            logging.debug(user + ": " + skk)
             
             
             
