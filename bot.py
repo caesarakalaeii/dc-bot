@@ -67,6 +67,10 @@ class GPTBot():
       
     async def messageHandler(self, message):
         user_prompt = message.content
+        media = message.attachments
+        media_amount = len(media)
+        if media_amount > 0:
+            user_prompt = "[{} amazing Media Attachements] \n".format(media_amount) + user_prompt
         name = message.author.name
         self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
