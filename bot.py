@@ -10,7 +10,6 @@ import requests
 from promt_creation import get_prompt, get_art_styles
 from api_secrets import *
 from logger import Logger
-from queue import Queue
 from whitelist import whitelist
 
 class ConversationHandler():
@@ -19,8 +18,8 @@ class ConversationHandler():
     def __init__(self, user, bot_name , init_prompt = None, conversation = None):
         self.user = user
         self.bot_name = bot_name
-        self.dir_path = "{}_conversations".format(self.bot_name)
-        self.file_path = os.path.join(self.dir_path, "{}.json".format(self.user))
+        self.dir_path = f"{self.bot_name}_conversations"
+        self.file_path = os.path.join(self.dir_path, f"{self.user}.json")
         if not conversation is None:
             self.conversation = conversation
         else:
@@ -56,10 +55,10 @@ class ConversationHandler():
     
     def saveConversation(self):
         for i in range(100):
-            if os.path.exists(os.path.join(self.dir_path, "{}_".format(self.user)+ "{}.json".format(i))):
+            if os.path.exists(os.path.join(self.dir_path, f"{self.user}_{i}.json")):
                 continue
             else:
-                with open(os.path.join(self.dir_path, "{}_".format(self.user)+ "{}.json".format(i)), "w") as f:
+                with open(os.path.join(self.dir_path, f"{self.user}_{i}.json"), "w") as f:
                     f.write(json.dumps(self.conversation))
                 break
                 
@@ -77,12 +76,12 @@ class ConversationHandler():
         else: raise FileNotFoundError
         
     def listConversations(bot_name : str):
-        return os.listdir("{}_conversations".format(bot_name))
+        return os.listdir(f"{bot_name}_conversations")
 
     def loadConversation(name : str, number, bot_name):
-        dir_path = "{}_conversations".format(bot_name)
-        if os.path.exists(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number))):
-            with open(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number)), "r") as f:
+        dir_path = f"{bot_name}_conversations"
+        if os.path.exists(os.path.join(dir_path, f"{name}_{number}.json")):
+            with open(os.path.join(dir_path, f"{name}_{number}.json"), "r") as f:
                 return json.loads(f.read())
         else: 
             raise FileNotFoundError
@@ -111,7 +110,7 @@ class ConversationHandler():
                     new_name = ""
                     for j in range(len(filename_split)-1):
                         new_name += filename_split[j]
-                    new_name += "_{}.".format(i) + filename_split[-1]
+                    new_name += f"_{i}.{filename_split[-1]}"
                     file_path = os.path.join(name, new_name)
                     if not os.path.exists(file_path):
                         try:
@@ -257,7 +256,7 @@ class GPTBot():
             if message.startswith(command) and whitelist[author.name] >= value["perm"]:
                 reply = await value["func"](author, message)
             elif message.startswith(command) and whitelist[author.name] < value["perm"]:
-                reply = "I'm sorry {}. I'm afraid can't do that.".format(author.name)
+                reply = f"I'm sorry {author.name}. I'm afraid can't do that."
                 
         if not reply == None:
             await author.send(reply)
@@ -271,14 +270,14 @@ class GPTBot():
         for conversation in self.conversations:
             if conversation.user == author.name:
                 found_conv = True
-                self.logger.warning("Clearing Message Log for {}".format(author.name))
+                self.logger.warning(f"Clearing Message Log for {author.name}")
                 conversation.deleteConversation()
                 del self.conversations[self.conversations.index(conversation)]
                 reply = "Conversation deleted"
                 break
         if not found_conv:
             conversation = ConversationHandler(author.name, self.bot_name)    
-            self.logger.warning("Clearing Message Log for {}".format(author.name))
+            self.logger.warning(f"Clearing Message Log for {author.name}")
             conversation.deleteConversation()
             reply = "Conversation deleted"
         return reply
@@ -286,7 +285,7 @@ class GPTBot():
     async def load_conv(self, author, message):
         reply = None
         parts = message.split(sep=" ")
-        self.logger.warning("{} loaded conversation ".format(author.name)+"{}".format(parts[1])+"_{}".format(parts[2]))
+        self.logger.warning(f"{author.name} loading conversation {parts[1]}_{parts[2]}")
         try:
             for conversation in self.conversations:
                 if conversation.user == author.name:
@@ -298,13 +297,13 @@ class GPTBot():
             reply = "Loaded conversation"
             self.logger.warning(reply)
         except FileNotFoundError:
-            reply = "Conversation {} not found".format(parts[1])
+            reply = f"Conversation {parts[1]}_{parts[2]} not found"
             self.logger.warning(reply)
         return reply
                     
     async def list_conv(self, author, message):
         reply = None
-        self.logger.warning("{} listed all conversations".format(author.name))
+        self.logger.warning(f"{author.name} listed all conversations")
         reply = ConversationHandler.listConversations(self.bot_name)
         if reply is None:
             reply = "No conversations Found"
@@ -312,86 +311,89 @@ class GPTBot():
                     
     async def toggle_test_mode(self, author, message):
         reply = None
-        self.logger.warning("{} toggled test_mode".format(author.name))
+        self.logger.warning(f"{author.name} toggled test_mode")
         self.test_mode= not self.test_mode
-        reply = "Test Mode is now: {}".format(self.test_mode)
+        reply = f"Test Mode is now: {self.test_mode}"
         self.logger.warning(reply)
         return reply
         
     async def toggle_test_prompt(self, author, message):
         reply = None
-        self.logger.warning("{} toggled test_test_prompt".format(author.name))
+        self.logger.warning(f"{author.name} toggled test_test_prompt")
         self.use_test_prompt= not self.use_test_prompt
         self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
-        reply = "use_test_prompt is now: {}".format(self.use_test_prompt)
+        reply = f"use_test_prompt is now: {self.use_test_prompt}"
         self.logger.warning(reply)
         return reply
 
     async def set_temp(self, author, message):
         parts = message.split(sep=" ")
         reply = None
-        self.logger.warning("{} changed Temperature".format(author.name))
+        self.logger.warning(f"{author.name} changed Temperature")
         self.temperature = parts[1]
-        reply = "Temparature is now: {}".format(self.temperature)
+        reply = f"Temparature is now: {self.temperature}"
         self.logger.warning(reply)
         return reply
         
     async def set_max_tokens(self, author, message):
         parts = message.split(sep=" ")
         reply = None
-        self.logger.warning("{} changed Temperature".format(author.name))
+        self.logger.warning(f"{author.name} changed Max Tokens")
         self.max_tokens = parts[1]
-        reply = "Max_tokends is now: {}".format(self.max_tokens)
+        reply = f"Max_tokends is now: {self.max_tokens}"
         self.logger.warning(reply)
         return reply
         
     async def set_delay(self, author, message):
         parts = message.split(sep=" ")
         reply = None
-        self.logger.warning("{} changed delay".format(author.name))
+        self.logger.warning(f"{author.name} changed delay")
         self.timer_duration = parts[1]
-        reply = "Minimum delay is now: {}".format(self.timer_duration)
+        reply = f"Minimum delay is now: {self.timer_duration}"
         self.logger.warning(reply)
         return reply
         
     async def get_config(self, author, message):
         reply = None
-        self.logger.warning("{} requested settings".format(author.name))
-        reply = "\nBot Name is: {}".format(self.bot_name)
-        reply += "\nModel name is: {}".format(self.MODEL_NAME)
-        reply += "\nStreamer name is: {}".format(self.streamer_name)
-        reply += "\nArt Styles are: {}".format(self.art_styles)
-        reply += "\nTemparature is: {}".format(self.temperature)
-        reply += "\nmin Delay is: {}s".format(self.timer_duration)
-        reply += "\nMax Tokens is: {}".format(self.max_tokens)
-        reply += "\nTest Mode is: {}".format(self.test_mode)
-        reply += "\nuse_test_prompt is: {}".format(self.use_test_prompt)
+        self.logger.warning(f"{author.name} requested settings")
+        replys = []
+        replys.append(f"Bot Name is: {self.bot_name}")
+        replys.append(f"Model name is: {self.MODEL_NAME}")
+        replys.append(f"Streamer name is: {self.streamer_name}")
+        replys.append(f"Art Styles are: {self.art_styles}")
+        replys.append(f"Temparature is: {self.temperature}")
+        replys.append(f"min Delay is: {self.timer_duration}s")
+        replys.append(f"Max Tokens is: {self.max_tokens}")
+        replys.append(f"Test Mode is: {self.test_mode}")
+        replys.append(f"use_test_prompt is: {self.use_test_prompt}")
         self.logger.warning(reply)
-        for r in reply.split("\n"):
+        for r in replys[:-1]:
             await author.send(r)
-        reply = "\n Config ended."
+        reply = replys[-1]
         return reply
         
     async def repeat_conv(self, author, message):
         reply = None
         for conv in self.conversations:
-            self.logger.warning("{} asked to get the conversation.".format(author.name))
+            self.logger.warning(f"{author.name} asked to get the conversation.")
             if conv.user == author.name:
+                replys = []
                 for c in conv.conversation:
                     if c["role"] == "system":
                         continue
                     elif c["role"] == "user":
-                        t = "{}: ".format(author.name)+"{}".format(c["content"])
-                        await author.send(t)
+                        replys.append(f"{author.name}: {c['content']}")
                     else:
-                        t = "{}: ".format(self.bot_name)+"{}".format(c["content"])
-                        await author.send(t)
-        reply = "Conversation Ended"
+                        replys.append(f"{self.bot_name}: {c['content']}")
+                for r in replys[:-1]:
+                    author.send(r)
+                reply = replys[-1]
+        
         return reply
     
     async def help(self, author, message):
-        self.logger.warning("{} asked for help.".format(author.name))
+        self.logger.warning(f"{author.name} asked for help.")
         reply = "Available Commands: \n"
         for command, value in self.commands.items():
             if whitelist[author.name] >= value["perm"]:
@@ -400,12 +402,15 @@ class GPTBot():
     
     async def get_init_prompt(self, author, message):
         reply = None	
-        self.logger.warning("{} asked for the prompt.".format(author.name))
+        self.logger.warning(f"{author.name} asked for the prompt.")
         for conv in self.conversations:
             if conv.user == author.name:
-                conv.conversation[0]
-        
+                prompt = conv.conversation[0]['content']
+                for l in prompt.split("\n")[:-1]:
+                    author.send(l)
+            reply = prompt.split("\n")[-1]
         return reply
+    
     async def disable_commands(self, author, message):
         parts = message.split(sep=" ")
         reply = None
@@ -423,9 +428,10 @@ class GPTBot():
             self.logger.error(reply)
         return reply
 
-    async def force_load():
+    async def force_load(self, author, message):
         reply = None
-        #fetches configbased on author name
+        self.conversations.append(ConversationHandler(author.name, self.bot_name))
+        reply = f"Loaded conversation with {author.name} into memory"
         return reply
     
     async def messageHandler(self, message):
@@ -440,7 +446,7 @@ class GPTBot():
             filenames = ""
             for m in media:
                 filenames += m.filename +", "
-            user_prompt = "[{} amazing Media Attachements, namely:".format(media_amount) + "{}]\n".format(filenames) + user_prompt
+            user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
         self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for task in self.tasks.values():
