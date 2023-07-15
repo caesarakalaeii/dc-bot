@@ -188,13 +188,26 @@ class GPTBot():
         elif message.startswith("!set_max_token"):
             self.logger.warning("{} changed Temperature".format(author.name))
             self.max_tokens = parts[1]
-            reply = "Temparature is now: {}".format(self.max_tokens)
+            reply = "Max_tokends is now: {}".format(self.max_tokens)
             self.logger.warning(reply)
             
         elif message.startswith("!set_delay"):
             self.logger.warning("{} changed delay".format(author.name))
             self.timer_duration = parts[1]
-            reply = "Temparature is now: {}".format(self.timer_duration)
+            reply = "Minimum delay is now: {}".format(self.timer_duration)
+            self.logger.warning(reply)
+            
+        elif message.startswith("!get_settings"):
+            self.logger.warning("{} requested settings".format(author.name))
+            reply = "\nBot Name is: {}".format(self.bot_name)
+            reply += "\nModel name is: {}".format(self.MODEL_NAME)
+            reply += "\nStreamer name is: {}".format(self.streamer_name)
+            reply += "\nArt Styles are: {}".format(self.art_styles)
+            reply += "\nInitial Prompt: {}".format(self.init_prompt)
+            reply += "Temparature is now: {}".format(self.timer_duration)
+            reply += "\nMax Tokens is now: {}".format(self.max_tokens)
+            reply += "\nTest Mode is now: {}".format(self.test_mode)
+            reply += "\nuse_test_prompt is now: {}".format(self.use_test_prompt)
             self.logger.warning(reply)
             
         elif message.startswith("!command_help"):
