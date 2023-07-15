@@ -170,6 +170,7 @@ class GPTBot():
             self.test_mode= not self.test_mode
             reply = "Test Mode is now: {}".format(self.test_mode)
             self.logger.warning(reply)
+            
         elif message.startswith("!toggle_test_prompt"):
             self.logger.warning("{} toggled test_test_prompt".format(author.name))
             self.use_test_prompt= not self.test_mode
@@ -208,6 +209,8 @@ class GPTBot():
             !toggle_testmode: toggles testmode for shorter response time. 
             !set_temperature value: Changes temperature
             !set_max_token value: sets the maximal Amount of Tokens used
+            !set_delay: will set minimum reply delay
+            !toggle_test_prompt: toggles usage of a test prompt
             """
         if not reply == None:
             await author.send(reply)
