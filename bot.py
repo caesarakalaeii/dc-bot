@@ -199,23 +199,28 @@ class GPTBot():
             
         elif message.startswith("!get_config"):
             self.logger.warning("{} requested settings".format(author.name))
-            reply = "\nBot Name is: {}".format(self.bot_name)
+            reply = "Bot Name is: {}".format(self.bot_name)
             reply += "\nModel name is: {}".format(self.MODEL_NAME)
             reply += "\nStreamer name is: {}".format(self.streamer_name)
             reply += "\nArt Styles are: {}".format(self.art_styles)
-            reply += "\nInitial Prompt: {}".format(self.init_prompt)
             reply += "Temparature is now: {}".format(self.timer_duration)
             reply += "\nMax Tokens is now: {}".format(self.max_tokens)
             reply += "\nTest Mode is now: {}".format(self.test_mode)
             reply += "\nuse_test_prompt is now: {}".format(self.use_test_prompt)
             self.logger.warning(reply)
+            for r in reply.split("\n"):
+                await author.send(r)
+            reply = "\n Config ended."
             
         elif message.startswith("!repeat_conv"):
             for conv in self.conversations:
                 self.logger.warning("{} asked to get the conversation.".format(author.name))
                 if conv.user == author.name:
                     for c in conv.conversation:
-                        await author.send("{}".format(c))
+                        if c["role"] == "system":
+                            continue
+                        else:
+                            await author.send("{}".format(c))
             reply = "Conversation Ended"
             
         elif message.startswith("!command_help"):
