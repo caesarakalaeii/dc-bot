@@ -91,19 +91,23 @@ class ConversationHandler():
 
 class GPTBot():
     
-    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_mode = False, temperature = 0.7, max_tokens = 256):
+    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_mode = False, temperature = 0.7, max_tokens = 256, use_test_prompt = False):
         self.conversations = []
         self.__bot_token = bot_token
         self.logger = Logger(True, True)
         openai.api_key = gpt_api_key
         self.MODEL_NAME = "gpt-3.5-turbo"
-        self.init_prompt = get_prompt(bot_name, streamer_name, art_styles, test_mode)
+        self.use_test_prompt = use_test_prompt
+        self.art_styles = art_styles
+        self.streamer_name = streamer_name
+        self.init_prompt = get_prompt(bot_name, streamer_name, art_styles, use_test_prompt)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
         self.test_mode = test_mode       
         self.temperature = temperature    
         self.max_tokens = max_tokens
         self.bot_name = bot_name
         self.timer_duration = timer_duration
+        
         self.tasks = {}
         
         
@@ -166,7 +170,14 @@ class GPTBot():
             self.test_mode= not self.test_mode
             reply = "Test Mode is now: {}".format(self.test_mode)
             self.logger.warning(reply)
-            
+        elif message.startswith("!toggle_test_prompt"):
+            self.logger.warning("{} toggled test_test_prompt".format(author.name))
+            self.use_test_prompt= not self.test_mode
+            self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
+            self.base_prompt = {"role": "system", "content": self.init_prompt}
+            reply = "use_test_prompt is now: {}".format(self.use_test_prompt)
+            self.logger.warning(reply)
+        
         elif message.startswith("!set_temperature"):
             self.logger.warning("{} changed Temperature".format(author.name))
             self.temperature = parts[1]
