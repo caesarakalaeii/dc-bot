@@ -203,7 +203,7 @@ class GPTBot():
             reply += "\nModel name is: {}".format(self.MODEL_NAME)
             reply += "\nStreamer name is: {}".format(self.streamer_name)
             reply += "\nArt Styles are: {}".format(self.art_styles)
-            reply += "Temparature is now: {}".format(self.timer_duration)
+            reply += "\nTemparature is now: {}".format(self.timer_duration)
             reply += "\nMax Tokens is now: {}".format(self.max_tokens)
             reply += "\nTest Mode is now: {}".format(self.test_mode)
             reply += "\nuse_test_prompt is now: {}".format(self.use_test_prompt)
