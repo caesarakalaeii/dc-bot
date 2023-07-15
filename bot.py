@@ -279,6 +279,7 @@ class GPTBot():
             if conversation.user == user:
                 if not conversation.awaitingResponse():
                     return
+                
                 response = openai.ChatCompletion.create(
                     model=self.MODEL_NAME,
                     messages= conversation.conversation,
@@ -313,5 +314,5 @@ class GPTBot():
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True)
+    bot = GPTBot(DISCORD_TOKEN_ALEX, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True)
     bot.runBot()
