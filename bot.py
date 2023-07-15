@@ -40,7 +40,7 @@ class ConversationHandler():
     def updateUser(self, message):
         self.conversation.append({"role": "user", "content": message})
         
-    def appendUserMessage(self, message):
+    def appendUserMessage(self, message:str):
         self.conversation[-1]["content"] + "\n" + message
         
     def checkDir(self):
@@ -89,20 +89,40 @@ class ConversationHandler():
         
     def saveMedia(name : str, medias):
         try:
-            os.mkdir(name + "_media")
-        except FileExistsError:
-            pass
-        finally:
-            for media in medias:
-                if not os.path.exists(os.path.join(name, media.filename)):
+            os.makedirs(name, exist_ok=True)  # Create directory if it doesn't exist
+        except OSError as e:
+            print(f"Error creating directory: {e}")
+            return
+
+        for media in medias:
+            file_path = os.path.join(name, media.filename)
+            if not os.path.exists(file_path):
+                try:
                     r = requests.get(media.url, allow_redirects=True)
-                    open(os.path.join(name, media.filename), 'wb').write(r.content)
-                else:
-                    for i in range(100):
-                        if not os.path.exists(os.path.join(name, media.filename + "_{}".format(i))):
+                    with open(file_path, 'wb') as file:
+                        file.write(r.content)
+                except Exception as e:
+                    print(f"Error saving media: {e}")
+            else:
+                i = 0
+                while True:
+                    filename :str = media.filename
+                    filename_split = filename.split(".")
+                    new_name = ""
+                    for j in range(len(filename_split)-1):
+                        new_name += filename_split[j]
+                    new_name += "_{}.".format(i) + filename_split[-1]
+                    file_path = os.path.join(name, new_name)
+                    if not os.path.exists(file_path):
+                        try:
                             r = requests.get(media.url, allow_redirects=True)
-                            open(os.path.join(name, media.filename + "_{}".format(i)), 'wb').write(r.content)
+                            with open(file_path, 'wb') as file:
+                                file.write(r.content)
                             break
+                        except Exception as e:
+                            print(f"Error saving media: {e}")
+                            break
+                    i+=i
         
 
 class GPTBot():
@@ -423,10 +443,10 @@ class GPTBot():
             user_prompt = "[{} amazing Media Attachements, namely:".format(media_amount) + "{}]\n".format(filenames) + user_prompt
         self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
-            for user, task in self.tasks.items():
+            for task in self.tasks.values():
                 if task is not None:
                     for conversation in self.conversations:
-                        conversation.appendUserMessage(message)
+                        conversation.appendUserMessage(user_prompt)
                         task.cancel()
            
         self.tasks[name] = asyncio.create_task(self.gpt_sending(message.author, len(message.content)))
