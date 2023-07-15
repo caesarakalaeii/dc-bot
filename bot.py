@@ -173,7 +173,7 @@ class GPTBot():
             
         elif message.startswith("!toggle_test_prompt"):
             self.logger.warning("{} toggled test_test_prompt".format(author.name))
-            self.use_test_prompt= not self.test_mode
+            self.use_test_prompt= not self.use_test_prompt
             self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
             self.base_prompt = {"role": "system", "content": self.init_prompt}
             reply = "use_test_prompt is now: {}".format(self.use_test_prompt)
