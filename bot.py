@@ -5,6 +5,7 @@ from discord.ext import commands
 import json
 import os
 import openai
+import requests
 
 from promt_creation import get_prompt
 from api_secrets import *
@@ -52,6 +53,7 @@ class ConversationHandler():
         except FileExistsError:
             return
         
+        
     def writeConversation(self):
         with open(self.file_path, "w") as f:
             f.write(json.dumps(self.conversation))
@@ -78,16 +80,29 @@ class ConversationHandler():
             os.remove(self.file_path)
         else: raise FileNotFoundError
         
-    def listConversations(bot_name):
+    def listConversations(bot_name : str):
         return os.listdir("{}_conversations".format(bot_name))
 
-    def loadConversation(name, number, bot_name):
+    def loadConversation(name : str, number, bot_name):
         dir_path = "{}_conversations".format(bot_name)
         if os.path.exists(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number))):
             with open(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number)), "r") as f:
                 return json.loads(f.read())
         else: 
             raise FileNotFoundError
+        
+    def saveMedia(name : str, medias):
+        for media in medias:
+            if not os.path.exists(os.path.join(name, media.filename)):
+                r = requests.get(media.url, allow_redirects=True)
+                open(os.path.join(name, media.filename), 'wb').write(r.content)
+            else:
+                for i in range(100):
+                    if not os.path.exists(os.path.join(name, media.filename + "_{}".format(i))):
+                        r = requests.get(media.url, allow_redirects=True)
+                        open(os.path.join(name, media.filename + "_{}".format(i)), 'wb').write(r.content)
+                        break
+        
 
 class GPTBot():
     
@@ -136,12 +151,20 @@ class GPTBot():
         parts = message.split(sep=" ")
         
         if message.startswith("!delete_conv"):
+            found_conv = False
             for conversation in self.conversations:
                 if conversation.user == author.name:
+                    found_conv = True
                     self.logger.warning("Clearing Message Log for {}".format(author.name))
                     conversation.deleteConversation()
                     del self.conversations[self.conversations.index(conversation)]
-            reply = "Conversation deleted"
+                    reply = "Conversation deleted"
+                    break
+            if not found_conv:
+                conversation = ConversationHandler(author.name, self.bot_name)    
+                self.logger.warning("Clearing Message Log for {}".format(author.name))
+                conversation.deleteConversation()
+                reply = "Conversation deleted"
             
         elif message.startswith("!load_conv"):
             self.logger.warning("{} loaded conversation ".format(author.name)+"{}".format(parts[1])+"_{}".format(parts[2]))
@@ -249,6 +272,7 @@ class GPTBot():
             return True
         
         return False
+    
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
@@ -257,7 +281,11 @@ class GPTBot():
         media = message.attachments
         media_amount = len(media)
         if media_amount > 0:
-            user_prompt = "[{} amazing Media Attachements] \n".format(media_amount) + user_prompt
+            ConversationHandler.saveMedia(name, media)
+            filenames = ""
+            for m in media:
+                filenames += m.filename +", "
+            user_prompt = "[{} amazing Media Attachements, namely:".format(media_amount) + "{}]\n".format(filenames) + user_prompt
         self.collectMessage(user_prompt, name, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for user, task in self.tasks.items():
