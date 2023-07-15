@@ -7,10 +7,11 @@ import os
 import openai
 import requests
 
-from promt_creation import get_prompt
+from promt_creation import get_prompt, get_art_styles
 from api_secrets import *
 from logger import Logger
 from queue import Queue
+from whitelist import whitelist
 
 class ConversationHandler():
     
@@ -28,12 +29,7 @@ class ConversationHandler():
                 self.fetchConversation()
             except FileNotFoundError:
                 self.conversation = [init_prompt]
-    def __init___(self, user, bot_name, conversation):
-        self.user = user
-        self.bot_name = bot_name
-        self.dir_path = "{}_conversations".format(self.bot_name)
-        self.file_path = os.path.join(self.dir_path, "{}.json".format(self.user))
-        self.conversation = conversation
+    
         
     def awaitingResponse(self):
         return self.conversation[-1]["role"] == "user"
@@ -92,30 +88,115 @@ class ConversationHandler():
             raise FileNotFoundError
         
     def saveMedia(name : str, medias):
-        for media in medias:
-            if not os.path.exists(os.path.join(name, media.filename)):
-                r = requests.get(media.url, allow_redirects=True)
-                open(os.path.join(name, media.filename), 'wb').write(r.content)
-            else:
-                for i in range(100):
-                    if not os.path.exists(os.path.join(name, media.filename + "_{}".format(i))):
-                        r = requests.get(media.url, allow_redirects=True)
-                        open(os.path.join(name, media.filename + "_{}".format(i)), 'wb').write(r.content)
-                        break
+        try:
+            os.mkdir(name + "_media")
+        except FileExistsError:
+            pass
+        finally:
+            for media in medias:
+                if not os.path.exists(os.path.join(name, media.filename)):
+                    r = requests.get(media.url, allow_redirects=True)
+                    open(os.path.join(name, media.filename), 'wb').write(r.content)
+                else:
+                    for i in range(100):
+                        if not os.path.exists(os.path.join(name, media.filename + "_{}".format(i))):
+                            r = requests.get(media.url, allow_redirects=True)
+                            open(os.path.join(name, media.filename + "_{}".format(i)), 'wb').write(r.content)
+                            break
         
 
 class GPTBot():
     
-    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_mode = False, temperature = 0.7, max_tokens = 256, use_test_prompt = False):
+    
+    def __init__(self, bot_token, gpt_api_key, bot_name, 
+                 streamer_name, timer_duration = 300, art_styles = None, 
+                 test_mode = False, temperature = 0.7, max_tokens = 256, 
+                 use_test_prompt = False, commands_enabled = True, admin_pw = None):
         self.conversations = []
+        self.commands_enabled = commands_enabled
+        self.__admin_pw = admin_pw
+        
+        self.commands = {
+            "!delete_conv": {
+                "perm": 5,
+                "help": "!delete_conv: Deletes this Conversation from bot Memory",
+                "func": self.del_conv
+                },
+            "!load_conv": {
+                "perm": 10,
+                "help": "!load_conv user number: Loads specific Conversation",
+                "func": self.load_conv
+                },
+            "!list_conv": {
+                "perm": 10,
+                "help": "!list_conv: Lists availabe conversations",
+                "func": self.list_conv
+                },
+            "!get_config": {
+                "perm": 5,
+                "help": "!get_config: returns current configuration",
+                "func": self.get_config
+                },
+            "!repeat_conv": {
+                "perm": 5,
+                "help": "!repeat_conv: repeats current conversation WARNING: might be a lot! will return nothing when conversation is not in memory",
+                "func": self.repeat_conv
+                },
+            "!toggle_testmode":{
+                "perm": 10,
+                "help": "!toggle_testmode: toggles testmode for shorter response time.",
+                "func": self.toggle_test_mode
+                },  
+            "!set_temperature": {
+                "perm": 10,
+                "help": "!set_temperature value: Changes temperature",
+                "func": self.set_temp
+                },
+            "!set_max_token": {
+                "perm": 10,
+                "help": "!set_max_token value: sets the maximal Amount of Tokens used",
+                "func": self.set_max_tokens
+                },
+            "!set_delay": {
+                "perm": 10,
+                "help": "!set_delay value: will set minimum reply delay",
+                "func": self.set_delay
+                },
+            "!toggle_test_prompt": {
+                "perm": 10,
+                "help": "!toggle_test_prompt: toggles usage of a test prompt",
+                "func": self.toggle_test_prompt
+                },
+            "!get_init_prompt": {
+                "perm": 15,
+                "help": "!get_init_prompt: returns initial prompt of this conversation",
+                "func": self.get_init_prompt
+                },
+            "!command_help":{
+                "perm": 1,
+                "help": "!command_help: returns all available commands",
+                "func": self.help
+                },
+            "!disable_commands":{
+                "perm": 10,
+                "help": "!disable_commands passwort: disables all commands until restart, passwort is set in api_secrets.py",
+                "func": self.disable_commands
+                }
+            
+            
+        }
         self.__bot_token = bot_token
         self.logger = Logger(True, True)
+        if self.__admin_pw == None:
+            self.logger.error("No admin password provided, you will not be able to disable commands!")
         openai.api_key = gpt_api_key
         self.MODEL_NAME = "gpt-3.5-turbo"
-        self.use_test_prompt = use_test_prompt
-        self.art_styles = art_styles
+        self.use_test_prompt = use_test_prompt        
         self.streamer_name = streamer_name
-        self.init_prompt = get_prompt(bot_name, streamer_name, art_styles, use_test_prompt)
+        if art_styles == None:
+            art_styles = get_art_styles()
+        self.art_styles = art_styles
+        self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
         self.test_mode = test_mode       
         self.temperature = temperature    
@@ -145,133 +226,187 @@ class GPTBot():
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
         
-        
+    
+    
+    
     async def check_command(self, message: str, author):
+        if not self.commads_enabled:
+            return False
         reply = None
-        parts = message.split(sep=" ")
-        
-        if message.startswith("!delete_conv"):
-            found_conv = False
-            for conversation in self.conversations:
-                if conversation.user == author.name:
-                    found_conv = True
-                    self.logger.warning("Clearing Message Log for {}".format(author.name))
-                    conversation.deleteConversation()
-                    del self.conversations[self.conversations.index(conversation)]
-                    reply = "Conversation deleted"
-                    break
-            if not found_conv:
-                conversation = ConversationHandler(author.name, self.bot_name)    
-                self.logger.warning("Clearing Message Log for {}".format(author.name))
-                conversation.deleteConversation()
-                reply = "Conversation deleted"
-            
-        elif message.startswith("!load_conv"):
-            self.logger.warning("{} loaded conversation ".format(author.name)+"{}".format(parts[1])+"_{}".format(parts[2]))
-            try:
-                for conversation in self.conversations:
-                    if conversation.user == author.name:
-                        conversation.saveConversation()
-                        del self.conversations[self.conversations.index(conversation)]
-                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
-                newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
-                self.conversations.append(newConv)
-                reply = "Loaded conversation"
-                self.logger.warning(reply)
-            except FileNotFoundError:
-                reply = "Conversation {} not found".format(parts[1])
-                self.logger.warning(reply)
-                 
-        elif message.startswith("!list_conv"):
-            self.logger.warning("{} listed all conversations".format(author.name))
-            reply = ConversationHandler.listConversations(self.bot_name)
-            if reply is None:
-                reply = "No conversations Found"
+        for command, value in self.commands.items():
+            if message.startswith(command) and whitelist[author.name] >= value["perm"]:
+                reply = await value["func"](author, message)
+            elif message.startswith(command) and whitelist[author.name] < value["perm"]:
+                reply = "I'm sorry {}. I'm afraid can't do that.".format(author.name)
                 
-        elif message.startswith("!toggle_testmode"):
-            self.logger.warning("{} toggled test_mode".format(author.name))
-            self.test_mode= not self.test_mode
-            reply = "Test Mode is now: {}".format(self.test_mode)
-            self.logger.warning(reply)
-            
-        elif message.startswith("!toggle_test_prompt"):
-            self.logger.warning("{} toggled test_test_prompt".format(author.name))
-            self.use_test_prompt= not self.use_test_prompt
-            self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
-            self.base_prompt = {"role": "system", "content": self.init_prompt}
-            reply = "use_test_prompt is now: {}".format(self.use_test_prompt)
-            self.logger.warning(reply)
-        
-        elif message.startswith("!set_temperature"):
-            self.logger.warning("{} changed Temperature".format(author.name))
-            self.temperature = parts[1]
-            reply = "Temparature is now: {}".format(self.temperature)
-            self.logger.warning(reply)
-            
-        elif message.startswith("!set_max_token"):
-            self.logger.warning("{} changed Temperature".format(author.name))
-            self.max_tokens = parts[1]
-            reply = "Max_tokends is now: {}".format(self.max_tokens)
-            self.logger.warning(reply)
-            
-        elif message.startswith("!set_delay"):
-            self.logger.warning("{} changed delay".format(author.name))
-            self.timer_duration = parts[1]
-            reply = "Minimum delay is now: {}".format(self.timer_duration)
-            self.logger.warning(reply)
-            
-        elif message.startswith("!get_config"):
-            self.logger.warning("{} requested settings".format(author.name))
-            reply = "Bot Name is: {}".format(self.bot_name)
-            reply += "\nModel name is: {}".format(self.MODEL_NAME)
-            reply += "\nStreamer name is: {}".format(self.streamer_name)
-            reply += "\nArt Styles are: {}".format(self.art_styles)
-            reply += "\nTemparature is now: {}".format(self.timer_duration)
-            reply += "\nMax Tokens is now: {}".format(self.max_tokens)
-            reply += "\nTest Mode is now: {}".format(self.test_mode)
-            reply += "\nuse_test_prompt is now: {}".format(self.use_test_prompt)
-            self.logger.warning(reply)
-            for r in reply.split("\n"):
-                await author.send(r)
-            reply = "\n Config ended."
-            
-        elif message.startswith("!repeat_conv"):
-            for conv in self.conversations:
-                self.logger.warning("{} asked to get the conversation.".format(author.name))
-                if conv.user == author.name:
-                    for c in conv.conversation:
-                        if c["role"] == "system":
-                            continue
-                        elif c["role"] == "user":
-                            t = "{}: ".format(author.name)+"{}".format(c["content"])
-                            await author.send(t)
-                        else:
-                            t = "{}: ".format(self.bot_name)+"{}".format(c["content"])
-                            await author.send(t)
-            reply = "Conversation Ended"
-            
-        elif message.startswith("!command_help"):
-            self.logger.warning("{} asked for help.".format(author.name))
-            reply = """
-            The Following commands are available:
-            !delete_conv: Deletes this Conversation from bot Memory
-            !load_conv user number: Loads specific Conversation
-            !list_conv: Lists availabe conversations
-            !get_config: returns current configuration
-            !repeat_conv: repeats current conversation WARNING: might be a lot! will return nothing when conversation is not in memory
-            WARNING: The following commadns should only be used, when you know exactly what they do, as they are global!
-            Ask Caesar if neccesarry!
-            !toggle_testmode: toggles testmode for shorter response time. 
-            !set_temperature value: Changes temperature
-            !set_max_token value: sets the maximal Amount of Tokens used
-            !set_delay: will set minimum reply delay
-            !toggle_test_prompt: toggles usage of a test prompt
-            """
         if not reply == None:
             await author.send(reply)
             return True
         
         return False
+    
+    async def del_conv(self, author, message):
+        reply = None
+        found_conv = False
+        for conversation in self.conversations:
+            if conversation.user == author.name:
+                found_conv = True
+                self.logger.warning("Clearing Message Log for {}".format(author.name))
+                conversation.deleteConversation()
+                del self.conversations[self.conversations.index(conversation)]
+                reply = "Conversation deleted"
+                break
+        if not found_conv:
+            conversation = ConversationHandler(author.name, self.bot_name)    
+            self.logger.warning("Clearing Message Log for {}".format(author.name))
+            conversation.deleteConversation()
+            reply = "Conversation deleted"
+        return reply
+            
+    async def load_conv(self, author, message):
+        reply = None
+        parts = message.split(sep=" ")
+        self.logger.warning("{} loaded conversation ".format(author.name)+"{}".format(parts[1])+"_{}".format(parts[2]))
+        try:
+            for conversation in self.conversations:
+                if conversation.user == author.name:
+                    conversation.saveConversation()
+                    del self.conversations[self.conversations.index(conversation)]
+            loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+            newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
+            self.conversations.append(newConv)
+            reply = "Loaded conversation"
+            self.logger.warning(reply)
+        except FileNotFoundError:
+            reply = "Conversation {} not found".format(parts[1])
+            self.logger.warning(reply)
+        return reply
+                    
+    async def list_conv(self, author, message):
+        reply = None
+        self.logger.warning("{} listed all conversations".format(author.name))
+        reply = ConversationHandler.listConversations(self.bot_name)
+        if reply is None:
+            reply = "No conversations Found"
+        return reply
+                    
+    async def toggle_test_mode(self, author, message):
+        reply = None
+        self.logger.warning("{} toggled test_mode".format(author.name))
+        self.test_mode= not self.test_mode
+        reply = "Test Mode is now: {}".format(self.test_mode)
+        self.logger.warning(reply)
+        return reply
+        
+    async def toggle_test_prompt(self, author, message):
+        reply = None
+        self.logger.warning("{} toggled test_test_prompt".format(author.name))
+        self.use_test_prompt= not self.use_test_prompt
+        self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
+        self.base_prompt = {"role": "system", "content": self.init_prompt}
+        reply = "use_test_prompt is now: {}".format(self.use_test_prompt)
+        self.logger.warning(reply)
+        return reply
+
+    async def set_temp(self, author, message):
+        parts = message.split(sep=" ")
+        reply = None
+        self.logger.warning("{} changed Temperature".format(author.name))
+        self.temperature = parts[1]
+        reply = "Temparature is now: {}".format(self.temperature)
+        self.logger.warning(reply)
+        return reply
+        
+    async def set_max_tokens(self, author, message):
+        parts = message.split(sep=" ")
+        reply = None
+        self.logger.warning("{} changed Temperature".format(author.name))
+        self.max_tokens = parts[1]
+        reply = "Max_tokends is now: {}".format(self.max_tokens)
+        self.logger.warning(reply)
+        return reply
+        
+    async def set_delay(self, author, message):
+        parts = message.split(sep=" ")
+        reply = None
+        self.logger.warning("{} changed delay".format(author.name))
+        self.timer_duration = parts[1]
+        reply = "Minimum delay is now: {}".format(self.timer_duration)
+        self.logger.warning(reply)
+        return reply
+        
+    async def get_config(self, author, message):
+        reply = None
+        self.logger.warning("{} requested settings".format(author.name))
+        reply = "\nBot Name is: {}".format(self.bot_name)
+        reply += "\nModel name is: {}".format(self.MODEL_NAME)
+        reply += "\nStreamer name is: {}".format(self.streamer_name)
+        reply += "\nArt Styles are: {}".format(self.art_styles)
+        reply += "\nTemparature is: {}".format(self.temperature)
+        reply += "\nmin Delay is: {}s".format(self.timer_duration)
+        reply += "\nMax Tokens is: {}".format(self.max_tokens)
+        reply += "\nTest Mode is: {}".format(self.test_mode)
+        reply += "\nuse_test_prompt is: {}".format(self.use_test_prompt)
+        self.logger.warning(reply)
+        for r in reply.split("\n"):
+            await author.send(r)
+        reply = "\n Config ended."
+        return reply
+        
+    async def repeat_conv(self, author, message):
+        reply = None
+        for conv in self.conversations:
+            self.logger.warning("{} asked to get the conversation.".format(author.name))
+            if conv.user == author.name:
+                for c in conv.conversation:
+                    if c["role"] == "system":
+                        continue
+                    elif c["role"] == "user":
+                        t = "{}: ".format(author.name)+"{}".format(c["content"])
+                        await author.send(t)
+                    else:
+                        t = "{}: ".format(self.bot_name)+"{}".format(c["content"])
+                        await author.send(t)
+        reply = "Conversation Ended"
+        return reply
+    
+    async def help(self, author, message):
+        self.logger.warning("{} asked for help.".format(author.name))
+        reply = "Available Commands: \n"
+        for command, value in self.commands.items():
+            if whitelist[author.name] >= value["perm"]:
+                reply += value["help"] + "\n"
+        return reply
+    
+    async def get_init_prompt(self, author, message):
+        reply = None	
+        self.logger.warning("{} asked for the prompt.".format(author.name))
+        for conv in self.conversations:
+            if conv.user == author.name:
+                conv.conversation[0]
+        
+        return reply
+    async def disable_commands(self, author, message):
+        parts = message.split(sep=" ")
+        reply = None
+        
+        if len(parts) > 0:
+            if parts[1] == self.__admin_pw:
+                reply = "DISABLED COMMANDS; THIS CAN NOT BE REVERTED WITHOUT A RESTART"
+                self.logger.error(reply)
+                self.commands_enabled = False
+            else:
+                reply = "The Password provided does not match, this event will be reported!"
+                self.logger.error(reply)
+        else:
+            reply = "No Password provided, this event will be reported!"
+            self.logger.error(reply)
+        return reply
+
+    async def force_load():
+        reply = None
+        #fetches configbased on author name
+        return reply
     
     async def messageHandler(self, message):
         user_prompt = message.content
@@ -291,11 +426,11 @@ class GPTBot():
             for user, task in self.tasks.items():
                 if task is not None:
                     for conversation in self.conversations:
-                        
                         conversation.appendUserMessage(message)
                         task.cancel()
            
-        self.tasks[name] = await asyncio.create_task(self.gpt_sending(message.author, len(message.content)))
+        self.tasks[name] = asyncio.create_task(self.gpt_sending(message.author, len(message.content)))
+        await self.tasks[name]
         
     async def gpt_sending(self,author, message_lenght):
         user = author.name
@@ -342,5 +477,5 @@ class GPTBot():
         bot.run(self.__bot_token)
             
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN_ALEX, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True)
+    bot = GPTBot(DISCORD_TOKEN_ALEX, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True, admin_pw=ADMIN_PASSWORT)
     bot.runBot()
