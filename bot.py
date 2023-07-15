@@ -219,8 +219,12 @@ class GPTBot():
                     for c in conv.conversation:
                         if c["role"] == "system":
                             continue
+                        elif c["role"] == "user":
+                            t = "{}: ".format(author.name)+"{}".format(c["content"])
+                            await author.send(t)
                         else:
-                            await author.send("{}".format(c))
+                            t = "{}: ".format(self.bot_name)+"{}".format(c["content"])
+                            await author.send(t)
             reply = "Conversation Ended"
             
         elif message.startswith("!command_help"):
@@ -231,7 +235,7 @@ class GPTBot():
             !load_conv user number: Loads specific Conversation
             !list_conv: Lists availabe conversations
             !get_config: returns current configuration
-            !repeat_conv: repeats current conversation WARNING: might me a lot!
+            !repeat_conv: repeats current conversation WARNING: might be a lot! will return nothing when conversation is not in memory
             WARNING: The following commadns should only be used, when you know exactly what they do, as they are global!
             Ask Caesar if neccesarry!
             !toggle_testmode: toggles testmode for shorter response time. 
