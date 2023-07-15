@@ -14,23 +14,35 @@ from queue import Queue
 class ConversationHandler():
     
     
-    def __init__(self, user, init_prompt, bot_name):
+    def __init__(self, user, bot_name , init_prompt = None, conversation = None):
         self.user = user
         self.bot_name = bot_name
         self.dir_path = "{}_conversations".format(self.bot_name)
         self.file_path = os.path.join(self.dir_path, "{}.json".format(self.user))
-        try:
-            self.checkDir()
-            self.fetchConversation()
-        except FileNotFoundError:
-            self.conversation = [init_prompt]
+        if not conversation is None:
+            self.conversation = conversation
+        else:
+            try:
+                self.checkDir()
+                self.fetchConversation()
+            except FileNotFoundError:
+                self.conversation = [init_prompt]
+    def __init___(self, user, bot_name, conversation):
+        self.user = user
+        self.bot_name = bot_name
+        self.dir_path = "{}_conversations".format(self.bot_name)
+        self.file_path = os.path.join(self.dir_path, "{}.json".format(self.user))
+        self.conversation = conversation
         
     def awaitingResponse(self):
         return self.conversation[-1]["role"] == "user"
+    
     def updateGPT(self, message):
         self.conversation.append({"role": "assistant", "content": message})
+        
     def updateUser(self, message):
         self.conversation.append({"role": "user", "content": message})
+        
     def appendUserMessage(self, message):
         self.conversation[-1]["content"] + "\n" + message
         
@@ -43,22 +55,43 @@ class ConversationHandler():
     def writeConversation(self):
         with open(self.file_path, "w") as f:
             f.write(json.dumps(self.conversation))
-
+    
+    def saveConversation(self):
+        for i in range(100):
+            if os.path.exists(os.path.join(self.dir_path, "{}_".format(self.user)+ "{}.json".format(i))):
+                continue
+            else:
+                with open(os.path.join(self.dir_path, "{}_".format(self.user)+ "{}.json".format(i)), "w") as f:
+                    f.write(json.dumps(self.conversation))
+                break
                 
     def fetchConversation(self):
         if os.path.exists(self.file_path):
             with open(self.file_path, "r") as f:
                 self.conversation = json.loads(f.read())
-        else: raise FileNotFoundError
+        else: 
+            raise FileNotFoundError
 
     def deleteConversation(self):
+        self.saveConversation()
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
         else: raise FileNotFoundError
+        
+    def listConversations(bot_name):
+        return os.listdir("{}_conversations".format(bot_name))
+
+    def loadConversation(name, number, bot_name):
+        dir_path = "{}_conversations".format(bot_name)
+        if os.path.exists(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number))):
+            with open(os.path.join(dir_path, "{}_".format(name)+ "{}.json".format(number)), "r") as f:
+                return json.loads(f.read())
+        else: 
+            raise FileNotFoundError
 
 class GPTBot():
     
-    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_mode = False):
+    def __init__(self, bot_token, gpt_api_key, bot_name, streamer_name, timer_duration = 300, art_styles = None, test_mode = False, temperature = 0.7, max_tokens = 256):
         self.conversations = []
         self.__bot_token = bot_token
         self.logger = Logger(True, True)
@@ -66,7 +99,9 @@ class GPTBot():
         self.MODEL_NAME = "gpt-3.5-turbo"
         self.init_prompt = get_prompt(bot_name, streamer_name, art_styles, test_mode)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
-        self.test_mode = test_mode           
+        self.test_mode = test_mode       
+        self.temperature = temperature    
+        self.max_tokens = max_tokens
         self.bot_name = bot_name
         self.timer_duration = timer_duration
         self.tasks = {}
@@ -85,7 +120,7 @@ class GPTBot():
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
-        newConv = ConversationHandler(user, self.base_prompt, self.bot_name)
+        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.base_prompt)
         newConv.updateUser(message)
         newConv.writeConversation()
         self.conversations.append(newConv)
@@ -94,21 +129,74 @@ class GPTBot():
         
     async def check_command(self, message: str, author):
         reply = None
-        if message.startswith("!clear_logs"):
+        parts = message.split(sep=" ")
+        
+        if message.startswith("!delete_conv"):
             for conversation in self.conversations:
                 if conversation.user == author.name:
                     self.logger.warning("Clearing Message Log for {}".format(author.name))
                     conversation.deleteConversation()
                     del self.conversations[self.conversations.index(conversation)]
-            reply = "Conversatoin deleted"
+            reply = "Conversation deleted"
+            
+        elif message.startswith("!load_conv"):
+            self.logger.warning("{} loaded conversation ".format(author.name)+"{}".format(parts[1])+"_{}".format(parts[2]))
+            try:
+                for conversation in self.conversations:
+                    if conversation.user == author.name:
+                        conversation.saveConversation()
+                        del self.conversations[self.conversations.index(conversation)]
+                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+                newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
+                self.conversations.append(newConv)
+                reply = "Loaded conversation"
+                self.logger.warning(reply)
+            except FileNotFoundError:
+                reply = "Conversation {} not found".format(parts[1])
+                self.logger.warning(reply)
+                 
+        elif message.startswith("!list_conversations"):
+            self.logger.warning("{} listed all conversations".format(author.name))
+            reply = ConversationHandler.listConversations(self.bot_name)
+            if reply is None:
+                reply = "No conversations Found"
+                
         elif message.startswith("!toggle_testmode"):
+            self.logger.warning("{} toggled test_mode".format(author.name))
             self.test_mode= not self.test_mode
             reply = "Test Mode is now: {}".format(self.test_mode)
+            self.logger.warning(reply)
+            
+        elif message.startswith("!set_temperature"):
+            self.logger.warning("{} changed Temperature".format(author.name))
+            self.temperature = parts[1]
+            reply = "Temparature is now: {}".format(self.temperature)
+            self.logger.warning(reply)
+            
+        elif message.startswith("!set_max_token"):
+            self.logger.warning("{} changed Temperature".format(author.name))
+            self.max_tokens = parts[1]
+            reply = "Temparature is now: {}".format(self.max_tokens)
+            self.logger.warning(reply)
+            
+        elif message.startswith("!set_delay"):
+            self.logger.warning("{} changed delay".format(author.name))
+            self.timer_duration = parts[1]
+            reply = "Temparature is now: {}".format(self.timer_duration)
+            self.logger.warning(reply)
+            
         elif message.startswith("!command_help"):
+            self.logger.warning("{} asked for help.".format(author.name))
             reply = """
             The Following commands are available:
-            !clear_logs: Deletes Conversation
-            !toggle_testmode: Enables testmode for shorter response time. WARNING: This will also set the initital prompt, so don't clear the logs when you want to test the prompt!
+            !delete_conv: Deletes this Conversation from bot Memory
+            !load_conversation user number: Loads specific Conversation
+            !list_conversations: Lists availabe conversations
+            WARNING: The following commadns should only be used, when you know exactly what they do, as they are global!
+            Ask Caesar if neccesarry!
+            !toggle_testmode: toggles testmode for shorter response time. 
+            !set_temperature value: Changes temperature
+            !set_max_token value: sets the maximal Amount of Tokens used
             """
         if not reply == None:
             await author.send(reply)
