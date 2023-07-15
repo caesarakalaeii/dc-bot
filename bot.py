@@ -230,7 +230,7 @@ class GPTBot():
     
     
     async def check_command(self, message: str, author):
-        if not self.commads_enabled:
+        if not self.commands_enabled:
             return False
         reply = None
         for command, value in self.commands.items():
