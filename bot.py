@@ -159,7 +159,7 @@ class GPTBot():
                 reply = "Conversation {} not found".format(parts[1])
                 self.logger.warning(reply)
                  
-        elif message.startswith("!list_conversations"):
+        elif message.startswith("!list_conv"):
             self.logger.warning("{} listed all conversations".format(author.name))
             reply = ConversationHandler.listConversations(self.bot_name)
             if reply is None:
@@ -197,7 +197,7 @@ class GPTBot():
             reply = "Minimum delay is now: {}".format(self.timer_duration)
             self.logger.warning(reply)
             
-        elif message.startswith("!get_settings"):
+        elif message.startswith("!get_config"):
             self.logger.warning("{} requested settings".format(author.name))
             reply = "\nBot Name is: {}".format(self.bot_name)
             reply += "\nModel name is: {}".format(self.MODEL_NAME)
@@ -210,13 +210,23 @@ class GPTBot():
             reply += "\nuse_test_prompt is now: {}".format(self.use_test_prompt)
             self.logger.warning(reply)
             
+        elif message.startswith("!repeat_conv"):
+            for conv in self.conversations:
+                self.logger.warning("{} asked to get the conversation.".format(author.name))
+                if conv.user == author.name:
+                    for c in conv.conversation:
+                        await author.send("{}".format(c))
+            reply = "Conversation Ended"
+            
         elif message.startswith("!command_help"):
             self.logger.warning("{} asked for help.".format(author.name))
             reply = """
             The Following commands are available:
             !delete_conv: Deletes this Conversation from bot Memory
-            !load_conversation user number: Loads specific Conversation
-            !list_conversations: Lists availabe conversations
+            !load_conv user number: Loads specific Conversation
+            !list_conv: Lists availabe conversations
+            !get_config: returns current configuration
+            !repeat_conv: repeats current conversation WARNING: might me a lot!
             WARNING: The following commadns should only be used, when you know exactly what they do, as they are global!
             Ask Caesar if neccesarry!
             !toggle_testmode: toggles testmode for shorter response time. 
