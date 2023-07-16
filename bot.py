@@ -21,6 +21,7 @@ class ConversationHandler():
         self.dir_path = f"{self.bot_name}_conversations"
         self.file_path = os.path.join(self.dir_path, f"{self.user}.json")
         self.init_prompt = init_prompt
+        self.base_prompt = {"role": "system", "content": self.init_prompt}
         if not conversation is None:
             self.conversation = conversation
         else:
@@ -28,7 +29,7 @@ class ConversationHandler():
                 self.checkDir()
                 self.fetchConversation()
             except FileNotFoundError:
-                self.conversation = [init_prompt]
+                self.conversation = [self.base_prompt]
     
         
     def awaitingResponse(self):
@@ -243,7 +244,7 @@ class GPTBot():
             art_styles = get_art_styles()
         self.art_styles = art_styles
         self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt, stream_link)
-        self.base_prompt = {"role": "system", "content": self.init_prompt}
+        
         self.test_mode = test_mode       
         self.temperature = temperature    
         self.max_tokens = max_tokens
@@ -377,7 +378,6 @@ class GPTBot():
         self.logger.warning(f"{author.name} toggled test_test_prompt")
         self.use_test_prompt= not self.use_test_prompt
         self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
-        self.base_prompt = {"role": "system", "content": self.init_prompt}
         reply = f"use_test_prompt is now: {self.use_test_prompt}"
         self.logger.info(reply)
         return reply
