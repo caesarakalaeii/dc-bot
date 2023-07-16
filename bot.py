@@ -468,10 +468,12 @@ class GPTBot():
                 prompt = conv.conversation[0]['content']
                 splits = prompt.split("\n")
                 for l in len(splits)-1:
+                    self.logger.info(splits[l])
                     author.send(splits[l])
             reply = splits[-1]
         if reply == None:
             reply = "No prompt found"
+        self.logger.info(reply)
         return reply
     
     async def disable_commands(self, author, message):
