@@ -213,6 +213,12 @@ class GPTBot():
                 "help": "!disable_commands passwort: disables all commands until restart, passwort is set in api_secrets.py",
                 "value_type": str,
                 "func": self.disable_commands
+                },
+            "!force_load":{
+                "perm":5,
+                "help":"!force_load: loads latest conversation, if available",
+                "value_type": None,
+                "func": self.force_load
                 }
             
             
