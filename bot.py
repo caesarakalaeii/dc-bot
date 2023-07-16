@@ -473,7 +473,7 @@ class GPTBot():
                 splits = prompt.split("\n")
                 for l in splits[:-1]:
                     self.logger.info(l)
-                    author.send(l)
+                    await author.send(l)
             reply = splits[-1]
         if reply == None:
             reply = "No prompt found"
