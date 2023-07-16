@@ -466,9 +466,10 @@ class GPTBot():
         for conv in self.conversations:
             if conv.user == author.name:
                 prompt = conv.conversation[0]['content']
-                for l in prompt.split("\n")[:-1]:
-                    author.send(l)
-            reply = prompt.split("\n")[-1]
+                splits = prompt.split("\n")
+                for l in len(splits)-1:
+                    author.send(splits[l])
+            reply = splits[-1]
         return reply
     
     async def disable_commands(self, author, message):
