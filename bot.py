@@ -20,6 +20,7 @@ class ConversationHandler():
         self.bot_name = bot_name
         self.dir_path = f"{self.bot_name}_conversations"
         self.file_path = os.path.join(self.dir_path, f"{self.user}.json")
+        self.init_prompt = init_prompt
         if not conversation is None:
             self.conversation = conversation
         else:
@@ -468,7 +469,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} asked for the prompt.")
         for conv in self.conversations:
             if conv.user == author.name:
-                prompt = conv.conversation[0]['content']
+                prompt = conv.init_prompt
                 splits = prompt.split("\n")
                 for l in splits[:-1]:
                     self.logger.info(l)
@@ -499,6 +500,7 @@ class GPTBot():
     async def force_load(self, author, message):
         reply = None
         try:
+            await self.del_conv(author, message)
             self.conversations.append(ConversationHandler(author.name, self.bot_name))
             reply = f"Loaded conversation with {author.name} into memory"
         except FileNotFoundError:
