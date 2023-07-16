@@ -470,6 +470,8 @@ class GPTBot():
                 for l in len(splits)-1:
                     author.send(splits[l])
             reply = splits[-1]
+        if reply == None:
+            reply = "No prompt found"
         return reply
     
     async def disable_commands(self, author, message):
