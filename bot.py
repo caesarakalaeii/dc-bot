@@ -256,7 +256,7 @@ class GPTBot():
         for conversation in self.conversations:
             if conversation.user == user:
                 if sender == "gpt":
-                    self.logger.chatReply(user,message)
+                    self.logger.chatReply(user, self.bot_name, message)
                     conversation.updateGPT(message)
                     conversation.writeConversation()
                     return

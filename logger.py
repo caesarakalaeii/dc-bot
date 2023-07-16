@@ -57,9 +57,9 @@ class Logger():
             print("\033[94m {}\033[00m" .format("Info:"),"\033[94m {}\033[00m" .format(skk))
         if self.file_logging:
             logging.debug(skk)
-    def chatReply(self,user,skk):#blue
+    def chatReply(self,user, bot_name,skk):#blue
         if self.console_log: 
-            print("\033[94m {}\033[00m" .format("Alex to {}:".format(user)),"\033[94m {}\033[00m" .format(skk))
+            print("\033[94m {}\033[00m" .format("{}".format(bot_name)+" to {}:".format(user)),"\033[94m {}\033[00m" .format(skk))
             
     def userReply(self,user,skk):#green
         if self.console_log: 
