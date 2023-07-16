@@ -406,7 +406,7 @@ class GPTBot():
                     else:
                         replys.append(f"{self.bot_name}: {c['content']}")
                 for r in replys[:-1]:
-                    author.send(r)
+                    await author.send(r)
                 reply = replys[-1]
         if reply == None:
             reply = "No conversation found"
