@@ -130,7 +130,8 @@ class GPTBot():
     def __init__(self, bot_token, gpt_api_key, bot_name, 
                  streamer_name, timer_duration = 300, art_styles = None, 
                  test_mode = False, temperature = 0.7, max_tokens = 256, 
-                 use_test_prompt = False, commands_enabled = True, admin_pw = None):
+                 use_test_prompt = False, commands_enabled = True, admin_pw = None,
+                 stream_link = None):
         self.conversations = []
         self.commands_enabled = commands_enabled
         self.__admin_pw = admin_pw
@@ -240,7 +241,7 @@ class GPTBot():
         if art_styles == None:
             art_styles = get_art_styles()
         self.art_styles = art_styles
-        self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt)
+        self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt, stream_link)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
         self.test_mode = test_mode       
         self.temperature = temperature    
