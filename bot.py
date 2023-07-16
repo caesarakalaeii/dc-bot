@@ -139,66 +139,79 @@ class GPTBot():
             "!delete_conv": {
                 "perm": 5,
                 "help": "!delete_conv: Deletes this Conversation from bot Memory",
+                "value_type": None,
                 "func": self.del_conv
                 },
             "!load_conv": {
                 "perm": 10,
                 "help": "!load_conv user number: Loads specific Conversation",
+                "value_type": [str,int],
                 "func": self.load_conv
                 },
             "!list_conv": {
                 "perm": 10,
                 "help": "!list_conv: Lists availabe conversations",
+                "value_type": None,
                 "func": self.list_conv
                 },
             "!get_config": {
                 "perm": 5,
                 "help": "!get_config: returns current configuration",
+                "value_type": None,
                 "func": self.get_config
                 },
             "!repeat_conv": {
                 "perm": 5,
                 "help": "!repeat_conv: repeats current conversation WARNING: might be a lot! will return nothing when conversation is not in memory",
+                "value_type": None,
                 "func": self.repeat_conv
                 },
             "!toggle_testmode":{
                 "perm": 10,
                 "help": "!toggle_testmode: toggles testmode for shorter response time.",
+                "value_type": None,
                 "func": self.toggle_test_mode
                 },  
             "!set_temperature": {
                 "perm": 10,
                 "help": "!set_temperature value: Changes temperature",
+                "value_type": float,
                 "func": self.set_temp
                 },
             "!set_max_token": {
                 "perm": 10,
                 "help": "!set_max_token value: sets the maximal Amount of Tokens used",
+                "value_type": int,
                 "func": self.set_max_tokens
                 },
             "!set_delay": {
                 "perm": 10,
                 "help": "!set_delay value: will set minimum reply delay",
+                "value_type": int,
                 "func": self.set_delay
                 },
             "!toggle_test_prompt": {
                 "perm": 10,
                 "help": "!toggle_test_prompt: toggles usage of a test prompt",
+                "value_type": None,
                 "func": self.toggle_test_prompt
                 },
             "!get_init_prompt": {
                 "perm": 15,
                 "help": "!get_init_prompt: returns initial prompt of this conversation",
+                "value_type": None,
                 "func": self.get_init_prompt
                 },
             "!command_help":{
                 "perm": 1,
                 "help": "!command_help: returns all available commands",
+                "value_type": None,
                 "func": self.help
                 },
             "!disable_commands":{
                 "perm": 10,
                 "help": "!disable_commands passwort: disables all commands until restart, passwort is set in api_secrets.py",
+                "value_type": str,
                 "func": self.disable_commands
                 }
             
@@ -430,8 +443,11 @@ class GPTBot():
 
     async def force_load(self, author, message):
         reply = None
-        self.conversations.append(ConversationHandler(author.name, self.bot_name))
-        reply = f"Loaded conversation with {author.name} into memory"
+        try:
+            self.conversations.append(ConversationHandler(author.name, self.bot_name))
+            reply = f"Loaded conversation with {author.name} into memory"
+        except FileNotFoundError:
+            reply = f"Conversation with {author.name} couldn't be found"
         return reply
     
     async def messageHandler(self, message):
@@ -502,6 +518,49 @@ class GPTBot():
                 await self.messageHandler(message)
         bot.run(self.__bot_token)
             
+    
+def test_all(bot : GPTBot):
+    l = Logger(True, False)
+    message = discord.Message()
+    message.author = "Test"
+    message.content = ""
+    message.channel = discord.DMChannel
+    
+    for c,v in bot.commands.items():
+        message.content = c
+        if not v["value_type"] == None:
+            if v["value_type"] is str:
+                bot.runBot().on_message(message)
+                message.content += ADMIN_PASSWORT
+                l.info(message.content)
+                bot.runBot().on_message(message)
+                message.content = c
+                message.content += "justsomerandomshit"
+            if v["value_type"] is [str,int]:
+                message.content += " caesar 0"
+                l.info(message.content)
+                bot.runBot().on_message(message)
+                message.content = c
+                message.content += " caesar 100"
+                l.info(message.content)
+                bot.runBot().on_message(message)
+            if v["value_type"] is int:
+                l.info(message.content)
+                bot.runBot().on_message(message)
+                message.content += f" {random.randint(1,20)}"
+                l.info(message.content)
+                bot.runBot().on_message(message)
+            if v["value_type"] is float:
+                l.info(message.content)
+                bot.runBot().on_message(message)
+                message.content += f" {random.random()}"
+                l.info(message.content)
+                bot.runBot().on_message(message)
+        else: 
+            l.info(message.content)
+            bot.runBot().on_message(message)
+    
 if __name__ == '__main__':
     bot = GPTBot(DISCORD_TOKEN_ALEX, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True, admin_pw=ADMIN_PASSWORT)
+    
     bot.runBot()
