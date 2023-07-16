@@ -446,6 +446,9 @@ class GPTBot():
                     await author.send(r)
                 reply = replys[-1]
                 self.logger.info(reply)
+        if reply == "":
+            reply = "Found trailing data, report to Admin"
+            self.logger.error(reply)
         if reply == None:
             reply = "No conversation found"
             self.logger.warning(reply)
