@@ -219,6 +219,12 @@ class GPTBot():
                 "help":"!force_load: loads latest conversation, if available",
                 "value_type": None,
                 "func": self.force_load
+                },
+            "!del_specific":{
+                "perm":10,
+                "help":"!del_specific user: deletes conversation log of specific user from memory",
+                "value_type": str,
+                "func": self.del_specific_conv
                 }
             
             
@@ -297,8 +303,35 @@ class GPTBot():
         if not found_conv:
             conversation = ConversationHandler(author.name, self.bot_name)    
             self.logger.warning(f"Clearing Message Log for {author.name}")
-            conversation.deleteConversation()
-            reply = "Conversation deleted"
+            try :
+                conversation.deleteConversation()
+                reply = "Conversation deleted"
+            except FileNotFoundError:
+                reply = "Conversation does not exist"
+        self.logger.info(reply)
+        return reply
+    
+    async def del_specific_conv(self, author, message):
+        reply = None
+        found_conv = False
+        parts = message.split(sep=" ")
+        name = parts[1]
+        for conversation in self.conversations:
+            if conversation.user == name:
+                found_conv = True
+                self.logger.warning(f"Clearing Message Log for {name}, requested by: {author.name}")
+                conversation.deleteConversation()
+                del self.conversations[self.conversations.index(conversation)]
+                reply = "Conversation deleted"
+                break
+        if not found_conv:
+            conversation = ConversationHandler(name, self.bot_name)    
+            self.logger.warning(f"Clearing Message Log for {name}, requested by: {author.name}")
+            try:
+                conversation.deleteConversation()
+                reply = "Conversation deleted"
+            except FileNotFoundError:
+                reply = "Conversation does not exist"
         self.logger.info(reply)
         return reply
             
