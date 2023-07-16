@@ -299,6 +299,7 @@ class GPTBot():
             self.logger.warning(f"Clearing Message Log for {author.name}")
             conversation.deleteConversation()
             reply = "Conversation deleted"
+        self.logger.info(reply)
         return reply
             
     async def load_conv(self, author, message):
@@ -314,10 +315,9 @@ class GPTBot():
             newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
             self.conversations.append(newConv)
             reply = "Loaded conversation"
-            self.logger.warning(reply)
         except FileNotFoundError:
             reply = f"Conversation {parts[1]}_{parts[2]} not found"
-            self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
                     
     async def list_conv(self, author, message):
@@ -326,6 +326,7 @@ class GPTBot():
         reply = ConversationHandler.listConversations(self.bot_name)
         if reply is None:
             reply = "No conversations Found"
+        self.logger.info(reply)
         return reply
                     
     async def toggle_test_mode(self, author, message):
@@ -333,7 +334,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} toggled test_mode")
         self.test_mode= not self.test_mode
         reply = f"Test Mode is now: {self.test_mode}"
-        self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
         
     async def toggle_test_prompt(self, author, message):
@@ -343,7 +344,7 @@ class GPTBot():
         self.init_prompt = get_prompt(self.bot_name, self.streamer_name, self.art_styles, self.use_test_prompt)
         self.base_prompt = {"role": "system", "content": self.init_prompt}
         reply = f"use_test_prompt is now: {self.use_test_prompt}"
-        self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
 
     async def set_temp(self, author, message):
@@ -352,7 +353,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} changed Temperature")
         self.temperature = parts[1]
         reply = f"Temparature is now: {self.temperature}"
-        self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
         
     async def set_max_tokens(self, author, message):
@@ -361,7 +362,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} changed Max Tokens")
         self.max_tokens = parts[1]
         reply = f"Max_tokends is now: {self.max_tokens}"
-        self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
         
     async def set_delay(self, author, message):
@@ -370,7 +371,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} changed delay")
         self.timer_duration = parts[1]
         reply = f"Minimum delay is now: {self.timer_duration}"
-        self.logger.warning(reply)
+        self.logger.info(reply)
         return reply
         
     async def get_config(self, author, message):
@@ -386,10 +387,11 @@ class GPTBot():
         replys.append(f"Max Tokens is: {self.max_tokens}")
         replys.append(f"Test Mode is: {self.test_mode}")
         replys.append(f"use_test_prompt is: {self.use_test_prompt}")
-        self.logger.warning(reply)
         for r in replys[:-1]:
+            self.logger.info(r)
             await author.send(r)
         reply = replys[-1]
+        self.logger.info(reply)
         return reply
         
     async def repeat_conv(self, author, message):
@@ -406,10 +408,13 @@ class GPTBot():
                     else:
                         replys.append(f"{self.bot_name}: {c['content']}")
                 for r in replys[:-1]:
+                    self.logger.info(r)
                     await author.send(r)
                 reply = replys[-1]
+                self.logger.info(reply)
         if reply == None:
             reply = "No conversation found"
+            self.logger.warning(reply)
         return reply
     
     async def help(self, author, message):
@@ -418,6 +423,7 @@ class GPTBot():
         for command, value in self.commands.items():
             if whitelist[author.name] >= value["perm"]:
                 reply += value["help"] + "\n"
+        self.logger.info(reply)
         return reply
     
     async def get_init_prompt(self, author, message):
@@ -455,6 +461,7 @@ class GPTBot():
             reply = f"Loaded conversation with {author.name} into memory"
         except FileNotFoundError:
             reply = f"Conversation with {author.name} couldn't be found"
+        self.logger.info(reply)
         return reply
     
     async def messageHandler(self, message):
