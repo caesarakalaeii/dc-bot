@@ -88,7 +88,7 @@ class ConversationHandler():
         
     def saveMedia(name : str, medias):
         try:
-            os.makedirs(name, exist_ok=True)  # Create directory if it doesn't exist
+            os.makedirs(f"{name}_media", exist_ok=True)  # Create directory if it doesn't exist
         except OSError as e:
             print(f"Error creating directory: {e}")
             return
