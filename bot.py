@@ -408,7 +408,8 @@ class GPTBot():
                 for r in replys[:-1]:
                     author.send(r)
                 reply = replys[-1]
-        
+        if reply == None:
+            reply = "No conversation found"
         return reply
     
     async def help(self, author, message):
