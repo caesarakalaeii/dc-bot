@@ -266,7 +266,7 @@ class GPTBot():
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
-        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.base_prompt)
+        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt)
         newConv.updateUser(message)
         newConv.writeConversation()
         self.conversations.append(newConv)
@@ -303,7 +303,7 @@ class GPTBot():
                 reply = "Conversation deleted"
                 break
         if not found_conv:
-            conversation = ConversationHandler(author.name, self.bot_name)    
+            conversation = ConversationHandler(author.name, self.bot_name, init_prompt=self.init_prompt)    
             self.logger.warning(f"Clearing Message Log for {author.name}")
             try :
                 conversation.deleteConversation()
@@ -327,7 +327,7 @@ class GPTBot():
                 reply = "Conversation deleted"
                 break
         if not found_conv:
-            conversation = ConversationHandler(name, self.bot_name)    
+            conversation = ConversationHandler(name, self.bot_name, init_prompt=self.init_prompt)    
             self.logger.warning(f"Clearing Message Log for {name}, requested by: {author.name}")
             try:
                 conversation.deleteConversation()
@@ -501,7 +501,7 @@ class GPTBot():
         reply = None
         try:
             await self.del_conv(author, message)
-            self.conversations.append(ConversationHandler(author.name, self.bot_name))
+            self.conversations.append(ConversationHandler(author.name, self.bot_name, self.init_prompt))
             reply = f"Loaded conversation with {author.name} into memory"
         except FileNotFoundError:
             reply = f"Conversation with {author.name} couldn't be found"
