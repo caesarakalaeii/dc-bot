@@ -467,7 +467,7 @@ class GPTBot():
             if conv.user == author.name:
                 prompt = conv.conversation[0]['content']
                 splits = prompt.split("\n")
-                for l in len(splits)-1:
+                for l in splits[:-1]:
                     self.logger.info(splits[l])
                     author.send(splits[l])
             reply = splits[-1]
