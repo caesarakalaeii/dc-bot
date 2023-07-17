@@ -637,7 +637,7 @@ class GPTBot():
                         
                 if not c.author == None:
                     self.logger.warning("Resending Message")
-                    c.collectMessage(c.author, "user")
+                    c.collectMessage(reply, c.author, "user")
                     await c.author.send(reply)
                     return "Resending Message"
                 if c.author == None:
