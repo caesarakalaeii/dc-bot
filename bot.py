@@ -50,8 +50,6 @@ class ConversationHandler():
         except FileExistsError:
             return
      
-    def toJson(self):
-        return "user"   
         
     def writeConversation(self):
         with open(self.file_path, "w") as f:
@@ -639,7 +637,10 @@ class GPTBot():
                     self.logger.warning("Resending Message")
                     self.collectMessage(reply, c.author, "user")
                     await c.author.send(reply)
+                    for u,t in self.tasks.items():
+                        t.cancel()
                     return "Resending Message"
+                    
                 if c.author == None:
                     reply = "User has no Author."
                     self.logger.warning(reply)
