@@ -145,6 +145,7 @@ class GPTBot():
         self.conversations = []
         self.commands_enabled = commands_enabled
         self.__admin_pw = admin_pw
+        self.bot = None
         self.commands = {
             "!delete_conv": {
                 "perm": 5,
@@ -247,7 +248,13 @@ class GPTBot():
                 "help":"!save_all: saves all on going conversations",
                 "value_type": None,
                 "func": self.save_all
-                }
+                },
+            "!get_msg_log":{
+                "perm": 10,
+                "help": "!get_msg_log user_id: Returns all DMs by user",
+                "value_type": int,
+                "func": self.getMessageLog
+            }
             
             
         }
@@ -565,6 +572,35 @@ class GPTBot():
         self.logger.error("Saved conversations.\nShutting down.")
         exit()
     
+    async def getMessageLog(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        if not bot == None:
+            
+            target_user = self.bot.get_user(int(splits[1]))
+
+            if target_user:
+                self.logger.warning(f'Fetching DMs from {target_user.name} ({target_user.id}), requested by {author.name}')
+                self.logger.info('------')
+
+                # Fetch the DM channel between the bot and the target user
+                dm_channel = target_user.dm_channel or await target_user.create_dm()
+
+                # Fetch all messages from the DM channel
+                messages = await dm_channel.history(limit=None).flatten()
+
+                for m in messages:
+                    reply = (f'{m.author.name} ({m.author.id}): {m.content}')
+                    self.logger.info(reply)
+                    await author.send(reply)
+            else:
+                reply = f'Unable to find user with ID {splits[1]}'
+                self.logger.warning(reply)
+        if reply == None:
+            reply = "Bot not initialized, How did we get here?"
+            self.logger.warning(reply)
+        return reply
+    
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
@@ -622,6 +658,7 @@ class GPTBot():
         intents = discord.Intents.default()
         bot = commands.Bot(command_prefix='!', intents=intents) 
         
+        self.bot = bot
         
         @bot.event
         async def on_ready():
