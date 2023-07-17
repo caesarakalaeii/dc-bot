@@ -628,7 +628,7 @@ class GPTBot():
                 if fetch_last_message:
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
-                        await self.gpt_sending(c.author, 1)
+                        self.tasks[c.user] = asyncio.create_task(self.gpt_sending(message.author, 1))
                         return "Got new Message from GPT"
                     else:
                         reply = last_conv["content"]
@@ -644,7 +644,10 @@ class GPTBot():
                 if c.author == None:
                     reply = "User has no Author."
                     self.logger.warning(reply)
-                    await reply
+                    return reply
+        reply = "Conversation not found."
+        self.logger.warning(reply)
+        return reply
 
     
     async def messageHandler(self, message):
