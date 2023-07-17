@@ -617,7 +617,7 @@ class GPTBot():
         reply = None
         if len(splits) > 2:
             reply = ""
-            for m in splits[1:]:
+            for m in splits[2:]:
                 reply += m + " "
         elif len(splits) == 2:
             fetch_last_message = True
