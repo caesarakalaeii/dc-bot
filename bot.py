@@ -56,6 +56,8 @@ class ConversationHandler():
             f.write(json.dumps(self.conversation))
     
     def saveConversation(self):
+        with open(os.path.join(self.dir_path, f"{self.user}_data.json"), "w") as f:
+                    f.write(json.dumps(self))
         for i in range(100):
             if os.path.exists(os.path.join(self.dir_path, f"{self.user}_{i}.json")):
                 continue
@@ -279,9 +281,11 @@ class GPTBot():
         
         self.tasks = {}   
         
-    def collectMessage(self,message, user, sender):
+    def collectMessage(self,message, author, sender):
+        user = author.name
         for conversation in self.conversations:
             if conversation.user == user:
+                conversation.author = author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
                     conversation.updateGPT(message)
@@ -293,6 +297,7 @@ class GPTBot():
                     conversation.writeConversation()
                     return
         newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt)
+        newConv.author = author
         newConv.updateUser(message)
         newConv.writeConversation()
         self.conversations.append(newConv)
@@ -325,6 +330,7 @@ class GPTBot():
             if conversation.user == author.name:
                 found_conv = True
                 self.logger.warning(f"Clearing Message Log for {author.name}")
+                conversation.saveConversation()
                 conversation.deleteConversation()
                 del self.conversations[self.conversations.index(conversation)]
                 reply = "Conversation deleted"
@@ -605,10 +611,11 @@ class GPTBot():
     
     async def resendMsg(self, author, message):
         reply = "Resending Message"
+        splits = message.split(" ")
         self.logger.warning(reply)
         for c in self.conversations:
-            if c.user == author.name:
-                self.gpt_sending(self, author, 5)
+            if c.user == splits[1]:
+                self.gpt_sending(self, c.author, 5)
     
     async def messageHandler(self, message):
         user_prompt = message.content
@@ -623,7 +630,7 @@ class GPTBot():
             for m in media:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        self.collectMessage(user_prompt, name, "user")
+        self.collectMessage(user_prompt, author, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for task in self.tasks.values():
                 if task is not None:
