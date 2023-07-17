@@ -82,12 +82,19 @@ class ConversationHandler():
 
     def loadConversation(name : str, number, bot_name):
         dir_path = f"{bot_name}_conversations"
-        if os.path.exists(os.path.join(dir_path, f"{name}_{number}.json")):
-            with open(os.path.join(dir_path, f"{name}_{number}.json"), "r") as f:
-                return json.loads(f.read())
-        else: 
-            raise FileNotFoundError
-        
+        if number == None:
+            if os.path.exists(os.path.join(dir_path, f"{name}.json")):
+                with open(os.path.join(dir_path, f"{name}.json"), "r") as f:
+                    return json.loads(f.read())
+            else: 
+                raise FileNotFoundError
+        else:
+            if os.path.exists(os.path.join(dir_path, f"{name}_{number}.json")):
+                with open(os.path.join(dir_path, f"{name}_{number}.json"), "r") as f:
+                    return json.loads(f.read())
+            else: 
+                raise FileNotFoundError
+            
     def saveMedia(name : str, medias):
         try:
             os.makedirs(f"{name}_media", exist_ok=True)  # Create directory if it doesn't exist
@@ -359,7 +366,7 @@ class GPTBot():
                     if conversation.user == author.name:
                         conversation.saveConversation()
                         del self.conversations[self.conversations.index(conversation)]
-                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+                loadedConv = ConversationHandler.loadConversation(parts[1], None, self.bot_name)
                 newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(newConv)
                 reply = "Loaded conversation"
@@ -552,9 +559,9 @@ class GPTBot():
         return reply
             
     async def shutdown(self, author, message):
-        
+        self.logger.error(f"{author.name} initiated shutdown, saving conversations.")
         await self.save_all(author, message)
-        
+        self.logger.error("Saved conversations.\nShutting down.")
         exit()
     
     async def messageHandler(self, message):
