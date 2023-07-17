@@ -541,10 +541,14 @@ class GPTBot():
         return reply
     
     async def save_all(self, author, message):
-        for c in self.conversations:
-            c.saveConversation()
-        reply = "Saved all conversations"
         self.logger.warning(f"{author.name} requested to save all conversations.")
+        if len(self.conversations) > 0:
+            for c in self.conversations:
+                c.saveConversation()
+            reply = "Saved all conversations"
+        else:
+            reply = "No conversations in memory"
+        self.logger.info(reply)
         return reply
             
     async def shutdown(self, author, message):
