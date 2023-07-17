@@ -49,15 +49,15 @@ class ConversationHandler():
             os.mkdir(self.dir_path)
         except FileExistsError:
             return
-        
+     
+    def toJson(self):
+        return "user"   
         
     def writeConversation(self):
         with open(self.file_path, "w") as f:
             f.write(json.dumps(self.conversation))
     
     def saveConversation(self):
-        with open(os.path.join(self.dir_path, f"{self.user}_data.json"), "w") as f:
-                    f.write(json.dumps(self))
         for i in range(100):
             if os.path.exists(os.path.join(self.dir_path, f"{self.user}_{i}.json")):
                 continue
@@ -256,6 +256,12 @@ class GPTBot():
                 "help": "!get_msg_log user_id: Returns all DMs by user",
                 "value_type": int,
                 "func": self.getMessageLog
+            },
+            "!force_resend":{
+                "perm": 5,
+                "help": "!force_resend name: Tries to send last message",
+                "value_type": str,
+                "func": self.resendMsg
             }
             
             
@@ -576,46 +582,69 @@ class GPTBot():
         self.logger.error(f"{author.name} initiated shutdown, saving conversations.")
         await self.save_all(author, message)
         self.logger.error("Saved conversations.\nShutting down.")
-        exit()
     
-    #async def getMessageLog(self, author, message):
-    #    reply = None
-    #    splits = message.split(" ")
-    #    if not bot == None:
-    #        
-    #        target_user = self.bot.get_user(int(splits[1]))
-#
-    #        if target_user:
-    #            self.logger.warning(f'Fetching DMs from {target_user.name} ({target_user.id}), requested by {author.name}')
-    #            self.logger.info('------')
-#
-    #            # Fetch the DM channel between the bot and the target user
-    #            dm_channel = target_user.dm_channel or await target_user.create_dm()
-#
-    #            # Fetch all messages from the DM channel
-    #            messages = []
-    #            async for message in dm_channel.history(limit=None):
-    #                messages.append(message)
-#
-    #            for m in messages:
-    #                reply = (f'{m.author.name} ({m.author.id}): {m.content}')
-    #                self.logger.info(reply)
-    #                await author.send(reply)
-    #        else:
-    #            reply = f'Unable to find user with ID {splits[1]}'
-    #            self.logger.warning(reply)
-    #    if reply == None:
-    #        reply = "Bot not initialized, How did we get here?"
-    #        self.logger.warning(reply)
-    #    return reply
+        exit()
+    async def getMessageLog(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        if not bot == None:
+            
+            target_user = self.bot.get_user(int(splits[1]))
+            if target_user:
+                self.logger.warning(f'Fetching DMs from {target_user.name} ({target_user.id}), requested by {author.name}')
+                self.logger.info('------')
+                # Fetch the DM channel between the bot and the target user
+                dm_channel = target_user.dm_channel or await target_user.create_dm()
+                # Fetch all messages from the DM channel
+                messages = []
+                async for message in dm_channel.history(limit=None):
+                    messages.append(message)
+                for m in messages:
+                    reply = (f"{m.author.name} ({m.author.id}): {m.content}")
+                    self.logger.info(reply)
+                    await author.send(reply)
+            else:
+                reply = f'Unable to find user with ID {splits[1]}'
+                self.logger.warning(reply)
+        if reply == None:
+            reply = "Bot not initialized, How did we get here?"
+            self.logger.warning(reply)
+        return reply
     
     async def resendMsg(self, author, message):
-        reply = "Resending Message"
+        fetch_last_message = False
         splits = message.split(" ")
-        self.logger.warning(reply)
+        reply = None
+        if len(splits) > 2:
+            reply = ""
+            for m in splits[1:]:
+                reply += m + " "
+        elif len(splits) == 2:
+            fetch_last_message = True
+        else:
+            reply = "No Arguments given!"
+            return reply
+        self.logger.warning(f"{author.name} requested resend to {splits[1]}")
         for c in self.conversations:
             if c.user == splits[1]:
-                self.gpt_sending(self, c.author, 5)
+                if fetch_last_message:
+                    last_conv = c.conversation[-1]
+                    if last_conv["role"] == "user":
+                        await self.gpt_sending(c.author, 1)
+                        return "Got new Message from GPT"
+                    else:
+                        reply = last_conv["content"]
+                        
+                if not c.author == None:
+                    self.logger.warning("Resending Message")
+                    c.collectMessage(c.author, "user")
+                    await c.author.send(reply)
+                    return "Resending Message"
+                if c.author == None:
+                    reply = "User has no Author."
+                    self.logger.warning(reply)
+                    await reply
+
     
     async def messageHandler(self, message):
         user_prompt = message.content
@@ -630,7 +659,7 @@ class GPTBot():
             for m in media:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        self.collectMessage(user_prompt, author, "user")
+        self.collectMessage(user_prompt, message.author, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for task in self.tasks.values():
                 if task is not None:
@@ -667,7 +696,7 @@ class GPTBot():
                 response_message = response['choices'][0]['message']
                 reply = response_message['content']
                 # Die Antwort an den Absender der DM zurückschicken
-                self.collectMessage(reply,user ,"gpt")
+                self.collectMessage(reply,author ,"gpt")
                 await author.send(reply)
         
     def runBot(self):
