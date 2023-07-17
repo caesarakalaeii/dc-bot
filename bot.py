@@ -96,14 +96,15 @@ class ConversationHandler():
                 raise FileNotFoundError
             
     def saveMedia(name : str, medias):
+        dir_path = f"{name}_media"
         try:
-            os.makedirs(f"{name}_media", exist_ok=True)  # Create directory if it doesn't exist
+            os.makedirs(dir_path, exist_ok=True)  # Create directory if it doesn't exist
         except OSError as e:
             print(f"Error creating directory: {e}")
             return
 
         for media in medias:
-            file_path = os.path.join(name, media.filename)
+            file_path = os.path.join(dir_path, media.filename)
             if not os.path.exists(file_path):
                 try:
                     r = requests.get(media.url, allow_redirects=True)
@@ -120,7 +121,7 @@ class ConversationHandler():
                     for j in range(len(filename_split)-1):
                         new_name += filename_split[j]
                     new_name += f"_{i}.{filename_split[-1]}"
-                    file_path = os.path.join(name, new_name)
+                    file_path = os.path.join(dir_path, new_name)
                     if not os.path.exists(file_path):
                         try:
                             r = requests.get(media.url, allow_redirects=True)
