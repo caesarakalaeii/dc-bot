@@ -270,7 +270,7 @@ class GPTBot():
             art_styles = get_art_styles()
         self.art_styles = art_styles
         self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt, stream_link)
-        
+        self.author = None
         self.test_mode = test_mode       
         self.temperature = temperature    
         self.max_tokens = max_tokens
@@ -572,36 +572,43 @@ class GPTBot():
         self.logger.error("Saved conversations.\nShutting down.")
         exit()
     
-    async def getMessageLog(self, author, message):
-        reply = None
-        splits = message.split(" ")
-        if not bot == None:
-            
-            target_user = self.bot.get_user(int(splits[1]))
-
-            if target_user:
-                self.logger.warning(f'Fetching DMs from {target_user.name} ({target_user.id}), requested by {author.name}')
-                self.logger.info('------')
-
-                # Fetch the DM channel between the bot and the target user
-                dm_channel = target_user.dm_channel or await target_user.create_dm()
-
-                # Fetch all messages from the DM channel
-                messages = []
-                async for message in dm_channel.history(limit=None):
-                    messages.append(message)
-
-                for m in messages:
-                    reply = (f'{m.author.name} ({m.author.id}): {m.content}')
-                    self.logger.info(reply)
-                    await author.send(reply)
-            else:
-                reply = f'Unable to find user with ID {splits[1]}'
-                self.logger.warning(reply)
-        if reply == None:
-            reply = "Bot not initialized, How did we get here?"
-            self.logger.warning(reply)
-        return reply
+    #async def getMessageLog(self, author, message):
+    #    reply = None
+    #    splits = message.split(" ")
+    #    if not bot == None:
+    #        
+    #        target_user = self.bot.get_user(int(splits[1]))
+#
+    #        if target_user:
+    #            self.logger.warning(f'Fetching DMs from {target_user.name} ({target_user.id}), requested by {author.name}')
+    #            self.logger.info('------')
+#
+    #            # Fetch the DM channel between the bot and the target user
+    #            dm_channel = target_user.dm_channel or await target_user.create_dm()
+#
+    #            # Fetch all messages from the DM channel
+    #            messages = []
+    #            async for message in dm_channel.history(limit=None):
+    #                messages.append(message)
+#
+    #            for m in messages:
+    #                reply = (f'{m.author.name} ({m.author.id}): {m.content}')
+    #                self.logger.info(reply)
+    #                await author.send(reply)
+    #        else:
+    #            reply = f'Unable to find user with ID {splits[1]}'
+    #            self.logger.warning(reply)
+    #    if reply == None:
+    #        reply = "Bot not initialized, How did we get here?"
+    #        self.logger.warning(reply)
+    #    return reply
+    
+    async def resendMsg(self, author, message):
+        reply = "Resending Message"
+        self.logger.warning(reply)
+        for c in self.conversations:
+            if c.user == author.name:
+                self.gpt_sending(self, author, 5)
     
     async def messageHandler(self, message):
         user_prompt = message.content
