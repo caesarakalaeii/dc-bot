@@ -137,7 +137,6 @@ class GPTBot():
         self.conversations = []
         self.commands_enabled = commands_enabled
         self.__admin_pw = admin_pw
-        
         self.commands = {
             "!delete_conv": {
                 "perm": 5,
@@ -212,7 +211,7 @@ class GPTBot():
                 "func": self.help
                 },
             "!disable_commands":{
-                "perm": 10,
+                "perm": 15,
                 "help": "!disable_commands passwort: disables all commands until restart, passwort is set in api_secrets.py",
                 "value_type": str,
                 "func": self.disable_commands
@@ -228,6 +227,18 @@ class GPTBot():
                 "help":"!del_specific user: deletes conversation log of specific user from memory",
                 "value_type": str,
                 "func": self.del_specific_conv
+                },
+            "!shutdown":{
+                "perm":15,
+                "help":"!shutdown: shutsdown this bot",
+                "value_type": None,
+                "func": self.shutdown
+                },
+            "!save_all":{
+                "perm":10,
+                "help":"!save_all: saves all on going conversations",
+                "value_type": None,
+                "func": self.save_all
                 }
             
             
@@ -251,8 +262,7 @@ class GPTBot():
         self.bot_name = bot_name
         self.timer_duration = timer_duration
         
-        self.tasks = {}
-        
+        self.tasks = {}   
         
     def collectMessage(self,message, user, sender):
         for conversation in self.conversations:
@@ -273,9 +283,6 @@ class GPTBot():
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
         
-    
-    
-    
     async def check_command(self, message: str, author):
         if not self.commands_enabled:
             return False
@@ -286,9 +293,13 @@ class GPTBot():
             elif message.startswith(command) and whitelist[author.name] < value["perm"]:
                 reply = f"I'm sorry {author.name}. I'm afraid can't do that."
                 
+        if message.startswith("!") and reply == None:
+            reply = "Unknown Command."
+            
         if not reply == None:
             await author.send(reply)
             return True
+        
         
         return False
     
@@ -341,19 +352,40 @@ class GPTBot():
     async def load_conv(self, author, message):
         reply = None
         parts = message.split(sep=" ")
-        self.logger.warning(f"{author.name} loading conversation {parts[1]}_{parts[2]}")
-        try:
-            for conversation in self.conversations:
-                if conversation.user == author.name:
-                    conversation.saveConversation()
-                    del self.conversations[self.conversations.index(conversation)]
-            loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
-            newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
-            self.conversations.append(newConv)
-            reply = "Loaded conversation"
-        except FileNotFoundError:
-            reply = f"Conversation {parts[1]}_{parts[2]} not found"
+        if len(parts) == 2 and whitelist[author.name] >= self.commands["!load_conv"]["perm"]:
+            self.logger.warning(f"{author.name} loading conversation {parts[1]}")
+            try:
+                for conversation in self.conversations:
+                    if conversation.user == author.name:
+                        conversation.saveConversation()
+                        del self.conversations[self.conversations.index(conversation)]
+                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+                newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
+                self.conversations.append(newConv)
+                reply = "Loaded conversation"
+            except FileNotFoundError:
+                reply = f"Conversation {parts[1]} not found"
+        elif len(parts) == 2 and whitelist[author.name] < self.commands["!load_conv"]["perm"]:
+            self.logger.warning(f"{author.name} tried loading conversation {parts[1]}, without neccessary permission")
+            reply = f"Please provide a conversation number."
+        elif len(parts) > 2:
+            self.logger.warning(f"{author.name} loading conversation {parts[1]}_{parts[2]}")
+            try:
+                for conversation in self.conversations:
+                    if conversation.user == author.name:
+                        conversation.saveConversation()
+                        del self.conversations[self.conversations.index(conversation)]
+                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+                newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
+                self.conversations.append(newConv)
+                reply = "Loaded conversation"
+            except FileNotFoundError:
+                reply = f"Conversation {parts[1]}_{parts[2]} not found"
+                
+        else:
+            reply = "Command usage is !load_conv user number"
         self.logger.info(reply)
+        
         return reply
                     
     async def list_conv(self, author, message):
@@ -507,6 +539,16 @@ class GPTBot():
             reply = f"Conversation with {author.name} couldn't be found"
         self.logger.info(reply)
         return reply
+    
+    async def save_all(self, author, message):
+        for c in self.conversations:
+            c.saveConversation()
+            
+    async def shutdown(self, author, message):
+        
+        await self.save_all(author, message)
+        
+        exit()
     
     async def messageHandler(self, message):
         user_prompt = message.content
