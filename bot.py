@@ -587,7 +587,9 @@ class GPTBot():
                 dm_channel = target_user.dm_channel or await target_user.create_dm()
 
                 # Fetch all messages from the DM channel
-                messages = await dm_channel.history(limit=None).flatten()
+                messages = []
+                async for message in dm_channel.history(limit=None):
+                    messages.append(message)
 
                 for m in messages:
                     reply = (f'{m.author.name} ({m.author.id}): {m.content}')
@@ -656,7 +658,9 @@ class GPTBot():
         
     def runBot(self):
         intents = discord.Intents.default()
-        bot = commands.Bot(command_prefix='!', intents=intents) 
+        intents.messages = True
+        intents.guilds = True
+        bot = discord.Client(intents=intents) 
         
         self.bot = bot
         
