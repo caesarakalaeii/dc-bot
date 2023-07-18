@@ -662,9 +662,11 @@ class GPTBot():
             for m in splits[2:]:
                 reply += m + " "
                 self.logger.warning("Sending User defined Message")
-            await self.collectMessage(reply, c.author, "gpt")
-            await c.author.send(reply)
-            return reply
+            for c in self.conversations:
+                if c.user == splits[1]:
+                    await self.collectMessage(reply, c.author, "gpt")
+                    await c.author.send(reply)
+                    return reply
         elif len(splits) == 2:
             fetch_last_message = True
         else:
