@@ -15,12 +15,13 @@ from whitelist import whitelist
 class ConversationHandler():
     
     
-    def __init__(self, user, bot_name , init_prompt = None, conversation = None):
+    def __init__(self, user, bot_name , init_prompt = None, conversation = None, author = None):
         self.user = user
         self.bot_name = bot_name
         self.dir_path = f"{self.bot_name}_conversations"
         self.file_path = os.path.join(self.dir_path, f"{self.user}.json")
         self.init_prompt = init_prompt
+        self.author = author
         self.base_prompt = {"role": "system", "content": self.init_prompt}
         if not conversation is None:
             self.conversation = conversation
@@ -49,8 +50,7 @@ class ConversationHandler():
             os.mkdir(self.dir_path)
         except FileExistsError:
             return
-     
-        
+   
     def writeConversation(self):
         with open(self.file_path, "w") as f:
             f.write(json.dumps(self.conversation))
@@ -256,15 +256,23 @@ class GPTBot():
                 "func": self.getMessageLog
             },
             "!force_resend":{
-                "perm": 5,
+                "perm": 10,
                 "help": "!force_resend name: Tries to send last message",
                 "value_type": str,
                 "func": self.resendMsg
+            },
+            "!load_author":{
+                "perm": 10,
+                "help": "!load_author user_id: Tries to load author by ID, load conversation first!",
+                "value_type": int,
+                "func": self.loadAuthor
             }
             
             
         }
         self.__bot_token = bot_token
+        self.authors = []
+        
         self.logger = Logger(True, True)
         if self.__admin_pw == None:
             self.logger.error("No admin password provided, you will not be able to disable commands!")
@@ -276,7 +284,7 @@ class GPTBot():
             art_styles = get_art_styles()
         self.art_styles = art_styles
         self.init_prompt = get_prompt(bot_name, streamer_name, self.art_styles, use_test_prompt, stream_link)
-        self.author = None
+        self.conv_data = "something"
         self.test_mode = test_mode       
         self.temperature = temperature    
         self.max_tokens = max_tokens
@@ -285,11 +293,14 @@ class GPTBot():
         
         self.tasks = {}   
         
-    def collectMessage(self,message, author, sender):
+        
+        
+    async def collectMessage(self,message, author, sender):
         user = author.name
         for conversation in self.conversations:
             if conversation.user == user:
-                conversation.author = author
+                if conversation.author == None:
+                    conversation.author == author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
                     conversation.updateGPT(message)
@@ -300,8 +311,7 @@ class GPTBot():
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
-        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt)
-        newConv.author = author
+        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
         newConv.updateUser(message)
         newConv.writeConversation()
         self.conversations.append(newConv)
@@ -326,6 +336,30 @@ class GPTBot():
         
         
         return False
+    
+    async def loadAuthor(self, author, message):
+        reply = None
+        found_author = False
+        parts = message.split(" ")
+        if len(parts) >= 2:
+            self.logger.warning(f"{author.name} requested to load author with ID {parts[1]}")
+            target_user = await self.bot.fetch_user(int(parts[1]))
+            if target_user == None:
+                reply = f"Loading author failed"
+            else:
+                for c in self.conversations:
+                    if c.user == target_user.name:
+                        c.author = target_user
+                        found_author = True
+                        break
+                if not found_author:
+                    reply = "Author not found/Conversation not found"
+                else: reply = "Author found and loaded"
+                
+        elif len(parts) < 2:
+            reply = "No ID provided"
+        self.logger.warning(reply)
+        return reply
     
     async def del_conv(self, author, message):
         reply = None
@@ -387,6 +421,8 @@ class GPTBot():
                 loadedConv = ConversationHandler.loadConversation(parts[1], None, self.bot_name)
                 newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(newConv)
+                loadedConv = ConversationHandler(parts[1], self.bot_name, conversation = loadedConv)
+                self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
                 reply = f"Conversation {parts[1]} not found"
@@ -403,6 +439,8 @@ class GPTBot():
                 loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
                 newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(newConv)
+                loadedConv = ConversationHandler(parts[1], self.bot_name, conversation = loadedConv)
+                self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
                 reply = f"Conversation {parts[1]}_{parts[2]} not found"
@@ -582,6 +620,7 @@ class GPTBot():
         self.logger.error("Saved conversations.\nShutting down.")
     
         exit()
+    
     async def getMessageLog(self, author, message):
         reply = None
         splits = message.split(" ")
@@ -609,6 +648,8 @@ class GPTBot():
             self.logger.warning(reply)
         return reply
     
+    
+    
     async def resendMsg(self, author, message):
         fetch_last_message = False
         splits = message.split(" ")
@@ -635,7 +676,7 @@ class GPTBot():
                         
                 if not c.author == None:
                     self.logger.warning("Resending Message")
-                    self.collectMessage(reply, c.author, "user")
+                    await self.collectMessage(reply, c.author, "user")
                     await c.author.send(reply)
                     for u,t in self.tasks.items():
                         t.cancel()
@@ -663,7 +704,7 @@ class GPTBot():
             for m in media:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        self.collectMessage(user_prompt, message.author, "user")
+        await self.collectMessage(user_prompt, message.author, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for task in self.tasks.values():
                 if task is not None:
@@ -700,7 +741,7 @@ class GPTBot():
                 response_message = response['choices'][0]['message']
                 reply = response_message['content']
                 # Die Antwort an den Absender der DM zurückschicken
-                self.collectMessage(reply,author ,"gpt")
+                await self.collectMessage(reply,author ,"gpt")
                 await author.send(reply)
         
     def runBot(self):
