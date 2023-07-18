@@ -648,8 +648,6 @@ class GPTBot():
             self.logger.warning(reply)
         return reply
     
-    
-    
     async def resendMsg(self, author, message):
         fetch_last_message = False
         splits = message.split(" ")
@@ -658,6 +656,10 @@ class GPTBot():
             reply = ""
             for m in splits[2:]:
                 reply += m + " "
+                self.logger.warning("Sending User defined Message")
+            await self.collectMessage(reply, c.author, "gpt")
+            await c.author.send(reply)
+            return reply
         elif len(splits) == 2:
             fetch_last_message = True
         else:
@@ -670,7 +672,7 @@ class GPTBot():
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
                         self.tasks[c.user] = asyncio.create_task(self.gpt_sending(c.author, 1))
-                        return "Got new Message from GPT"
+                        return "Requested new Message from GPT"
                     else:
                         reply = last_conv["content"]
                         
@@ -689,8 +691,7 @@ class GPTBot():
         reply = "Conversation not found."
         self.logger.warning(reply)
         return reply
-
-    
+  
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
