@@ -669,7 +669,7 @@ class GPTBot():
                 if fetch_last_message:
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
-                        self.tasks[c.user] = asyncio.create_task(self.gpt_sending(message.author, 1))
+                        self.tasks[c.user] = asyncio.create_task(self.gpt_sending(c.author, 1))
                         return "Got new Message from GPT"
                     else:
                         reply = last_conv["content"]
