@@ -533,7 +533,7 @@ class GPTBot():
         reply = None
         splits = message.split(" ")
         name = author.name
-        if len(splits) > 2:
+        if len(splits) >= 2:
             name = splits[1]
         for conv in self.conversations:
             self.logger.warning(f"{author.name} asked to get the conversation.")
