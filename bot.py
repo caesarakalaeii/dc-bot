@@ -664,9 +664,9 @@ class GPTBot():
         reply = None
         if len(splits) > 2:
             reply = ""
+            self.logger.warning("Sending User defined Message")
             for m in splits[2:]:
                 reply += m + " "
-                self.logger.warning("Sending User defined Message")
             for c in self.conversations:
                 if c.user == splits[1]:
                     await self.collectMessage(reply, c.author, "gpt")
