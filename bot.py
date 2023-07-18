@@ -531,6 +531,10 @@ class GPTBot():
         
     async def repeat_conv(self, author, message):
         reply = None
+        splits = message.split(" ")
+        name = author.name
+        if len(splits) > 2:
+            name = splits[1]
         for conv in self.conversations:
             self.logger.warning(f"{author.name} asked to get the conversation.")
             if conv.user == author.name:
@@ -539,12 +543,13 @@ class GPTBot():
                     if c["role"] == "system":
                         continue
                     elif c["role"] == "user":
-                        replys.append(f"{author.name}: {c['content']}")
+                        replys.append(f"{name}: {c['content']}")
                     else:
                         replys.append(f"{self.bot_name}: {c['content']}")
                 for r in replys[:-1]:
                     self.logger.info(r)
                     await author.send(r)
+                    asyncio.sleep(1)
                 reply = replys[-1]
                 self.logger.info(reply)
         if reply == "":
