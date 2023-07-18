@@ -411,7 +411,7 @@ class GPTBot():
     async def load_conv(self, author, message):
         reply = None
         parts = message.split(sep=" ")
-        if len(parts) == 2 and whitelist[author.name] >= self.commands["!load_conv"]["perm"]:
+        if len(parts) >= 2 and whitelist[author.name] >= self.commands["!load_conv"]["perm"]:
             self.logger.warning(f"{author.name} loading conversation {parts[1]}")
             try:
                 for conversation in self.conversations:
@@ -425,7 +425,12 @@ class GPTBot():
                 self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
-                reply = f"Conversation {parts[1]} not found"
+                if len(parts) > 2:
+                    loadedConv = ConversationHandler(parts[1], self.bot_name, init_prompt=self.init_prompt)
+                    self.conversations.append(loadedConv)
+                    reply = f"Fake loaded conversation {parts[1]}"
+                else:
+                    reply = f"Conversation {parts[1]} not found"
         elif len(parts) == 2 and whitelist[author.name] < self.commands["!load_conv"]["perm"]:
             self.logger.warning(f"{author.name} tried loading conversation {parts[1]}, without neccessary permission")
             reply = f"Please provide a conversation number."
