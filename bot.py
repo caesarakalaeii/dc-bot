@@ -10,7 +10,6 @@ import requests
 from promt_creation import get_prompt, get_art_styles
 from api_secrets import *
 from logger import Logger
-from whitelist import whitelist
 
 class ConversationHandler():
     
@@ -272,6 +271,36 @@ class GPTBot():
                 "help": "!clear_memory: clears conversations from memory, while retaining .jsons unchanged",
                 "value_type": None,
                 "func": self.clearMemory
+            },
+            "!ban":{
+                "perm": 15,
+                "help": "!ban user_id: Bans user_id from interacting with bot",
+                "value_type": int,
+                "func": self.ban
+            },
+            "!unban":{
+                "perm": 15,
+                "help": "!unban user_id: Unbans user_id from interacting with bot",
+                "value_type": int,
+                "func": self.unban
+            },
+            "!whitelist":{
+                "perm": 15,
+                "help": "!whitelist user value: whitelists user with permission value 1-15, to deactivate commands set value to 0",
+                "value_type": str,
+                "func": self.whitelist
+            },
+            "!reload_whitelist":{
+                "perm": 15,
+                "help": "!reload_whitelist: reloads whitelist from disk",
+                "value_type": None,
+                "func": self.reload_whitelist
+            },
+            "!reload_blacklist":{
+                "perm": 15,
+                "help": "!reload_blacklist: reloads blacklist from disk",
+                "value_type": None,
+                "func": self.reload_blacklist
             }
             
             
@@ -296,11 +325,92 @@ class GPTBot():
         self.max_tokens = max_tokens
         self.bot_name = bot_name
         self.timer_duration = timer_duration
+        loaded_black = self.load_blacklist()
+        self.black_list = loaded_black
+        loaded_white = self.load_whitelist()
+        self.white_list = loaded_white
         
         self.tasks = {}   
         
+    def load_blacklist(self):
+        if os.path.exists("blacklist.json"):
+            with open("blacklist.json", "r") as f:
+                return json.loads(f.read())
+        else: 
+            return []
+    
+    def write_blacklist(self):
+        if os.path.exists("blacklist.json"):
+            with open("blacklist.json", "w") as f:
+                f.write(json.dumps(self.black_list))
+        else: 
+            raise FileNotFoundError
         
+    async def ban(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        if len(splits) <2:
+            reply = "no user_id provided"
+        else:
+            self.black_list.append(splits[1])
+            self.write_blacklist()
+            self.logger.warning(f"{author.name} banned user with id {splits[1]}")
+            reply = f"user with id {splits[1]} is now banned"
         
+        return reply
+    
+    async def unban(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        if len(splits) <2:
+            reply = "no user_id provided"
+        else:
+            del self.black_list[self.black_list.index(splits[1])]
+            self.write_blacklist()
+            self.logger.warning(f"{author.name} unbanned user with id {splits[1]}")
+            reply = f"user with id {splits[1]} is now unbanned"
+        
+        return reply
+    
+    def load_whitelist(self):
+        if os.path.exists("whitelist.json"):
+            with open("whitelist.json", "r") as f:
+                return json.loads(f.read())
+        else: 
+            return []
+        
+    def write_whitelist(self):
+        if os.path.exists("whitelist.json"):
+            with open("whitelist.json", "w") as f:
+                f.write(json.dumps(self.white_list))
+        else: 
+            raise FileNotFoundError
+    
+    async def whitelist(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        if len(splits) <3:
+            reply = "no user and/or value provided"
+        else:
+            self.white_list.update({splits[1]: splits[2]})
+            self.write_whitelist()
+            self.logger.warning(f"{author.name} whitelisted {splits[1]} with {splits[2]}")
+            reply = f"{splits[1]} is now whitelisted {splits[1]} with {splits[2]}"
+        
+        return reply
+    
+    async def reload_blacklist(self, author, message):
+        
+        self.black_list = self.load_blacklist()
+        self.logger.warning(f"{author.name} reloaded blacklist with values {self.black_list}")
+        return f"Blacklist loaded with values {self.black_list}"
+    
+    async def reload_whitelist(self, author, message):
+        
+        self.black_list = self.load_whitelist()
+        self.logger.warning(f"{author.name} reloaded whitelist with values {self.white_list}")
+        return f"Whitelist loaded with values {self.white_list}"
+    
     async def collectMessage(self,message, author, sender):
         user = author.name
         for conversation in self.conversations:
@@ -328,11 +438,18 @@ class GPTBot():
             return False
         reply = None
         for command, value in self.commands.items():
-            if message.startswith(command) and whitelist[author.name] >= value["perm"]:
+            if message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
                 reply = await value["func"](author, message)
-            elif message.startswith(command) and whitelist[author.name] < value["perm"]:
+            elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
                 reply = f"I'm sorry {author.name}. I'm afraid can't do that."
-                
+                self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
+            elif self.white_list[author.name] == "0":
+                self.logger.warning(f"{author.name} invoked {command} with 0 permissions")
+                return True
+            elif int(self.white_list[author.name]) > 15:
+                self.logger.warning(f"{author.name} invoked {command} with too much permissions")
+                reply = "Bruh"
+                return True
         if message.startswith("!") and reply == None:
             reply = "Unknown Command."
             
@@ -577,7 +694,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} asked for help.")
         reply = "Available Commands: \n"
         for command, value in self.commands.items():
-            if whitelist[author.name] >= value["perm"]:
+            if self.white_list[author.name] >= value["perm"]:
                 reply += value["help"] + "\n"
         self.logger.info(reply)
         return reply
@@ -720,6 +837,9 @@ class GPTBot():
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
+        if message.author.id in self.black_list:
+            await message.author.send("You have no power here")
+            return
         if await self.check_command(user_prompt, message.author):
             return
         media = message.attachments
