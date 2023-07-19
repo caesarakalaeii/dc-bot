@@ -288,7 +288,7 @@ class GPTBot():
             "!whitelist":{
                 "perm": 15,
                 "help": "!whitelist user value: whitelists user with permission value 1-15, to deactivate commands set value to 0",
-                "value_type": str,
+                "value_type": [str, int],
                 "func": self.whitelist
             },
             "!reload_whitelist":{
@@ -302,6 +302,12 @@ class GPTBot():
                 "help": "!reload_blacklist: reloads blacklist from disk",
                 "value_type": None,
                 "func": self.reload_blacklist
+            },
+            "!init_conv":{
+                "perm": 10,
+                "help": "!init_conv user id message: Initializes conversation with message to user with id",
+                "value_type": [str, int, str],
+                "func": self.init_conv
             }
             
             
@@ -461,6 +467,23 @@ class GPTBot():
         
         
         return False
+    
+    async def init_conv(self, author, message):
+        reply = None
+        splits = message.split(" ")
+        self.logger.warning(f"{author.name} tries to initialze conversation")
+        if len(splits) > 4:
+            await self.load_conv(author,f"!load_conv {splits[1]} force")
+            await self.loadAuthor(author, f"!load_author {splits[2]}")
+            send = ""
+            for m in splits [3:]:
+                send += m
+            await self.resendMsg(author,f"!force_resend {splits[1]} {send}")
+            reply = "Initialized conversation with {splits[1]} with id {splits[2]}.\nMessage is: {send}"
+        else:
+            reply = "Too little information to initialize conversation"
+        self.logger.info(reply)
+        return reply
     
     async def loadAuthor(self, author, message):
         reply = None
