@@ -874,10 +874,10 @@ class GPTBot():
                 if not conversation.awaitingResponse():
                     return
                 messages= conversation.conversation
-                if len(messages) > 10:
+                if len(messages) > 20:
                     old = messages
                     messages = [old[0]]
-                    for m in old[-10:]:
+                    for m in old[-20:]:
                         messages.append(m)
                 
                 response = openai.ChatCompletion.create(
