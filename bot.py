@@ -437,22 +437,23 @@ class GPTBot():
         if not self.commands_enabled:
             return False
         reply = None
-        for command, value in self.commands.items():
-            if message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
-                reply = await value["func"](author, message)
-            elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
-                reply = f"I'm sorry {author.name}. I'm afraid can't do that."
-                self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
-            elif self.white_list[author.name] == "0":
-                self.logger.warning(f"{author.name} invoked {command} with 0 permissions")
-                return True
-            elif int(self.white_list[author.name]) > 15:
-                self.logger.warning(f"{author.name} invoked {command} with too much permissions")
-                reply = "Bruh"
-                return True
-        if message.startswith("!") and reply == None:
-            reply = "Unknown Command."
-            
+        try:
+            for command, value in self.commands.items():
+                if message.startswith(command) and int(self.white_list[author.name]) > 15:
+                    self.logger.warning(f"{author.name} invoked {command} with too much permissions")
+                    reply = "Bruh"
+                elif message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
+                    reply = await value["func"](author, message)
+                elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
+                    reply = f"I'm sorry {author.name}. I'm afraid can't do that."
+                    self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
+                elif self.white_list[author.name] == "0":
+                    self.logger.warning(f"{author.name} invoked {command} with 0 permissions")
+                    return True
+            if message.startswith("!") and reply == None:
+                reply = "Unknown Command."
+        except KeyError:
+            return False
         if not reply == None:
             await author.send(reply)
             return True
@@ -694,7 +695,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} asked for help.")
         reply = "Available Commands: \n"
         for command, value in self.commands.items():
-            if self.white_list[author.name] >= value["perm"]:
+            if int(self.white_list[author.name]) >= value["perm"]:
                 reply += value["help"] + "\n"
         self.logger.info(reply)
         return reply
@@ -837,8 +838,8 @@ class GPTBot():
     async def messageHandler(self, message):
         user_prompt = message.content
         name = message.author.name
-        if message.author.id in self.black_list:
-            await message.author.send("You have no power here")
+        if f"{message.author.id}" in self.black_list:
+            await message.author.send("You have no power here!")
             return
         if await self.check_command(user_prompt, message.author):
             return
