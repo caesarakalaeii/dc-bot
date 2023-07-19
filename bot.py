@@ -22,6 +22,7 @@ class ConversationHandler():
         self.init_prompt = init_prompt
         self.author = author
         self.base_prompt = {"role": "system", "content": self.init_prompt}
+         
         if not conversation is None:
             self.conversation = conversation
         else:
@@ -872,12 +873,17 @@ class GPTBot():
             if conversation.user == user:
                 if not conversation.awaitingResponse():
                     return
+                messages= conversation.conversation
+                if len(messages) > 10:
+                    old = messages
+                    messages = old[0]
+                    messages.append(messages[-10:])
                 
                 response = openai.ChatCompletion.create(
                     model=self.MODEL_NAME,
-                    messages= conversation.conversation,
-                    max_tokens=256,  # maximal amout of tokens, one token roughly equates to 4 chars
-                    temperature=0.3,  # control over creativity
+                    messages= messages,
+                    max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
+                    temperature=self.temperature,  # control over creativity
                     n=1, # amount of answers
                     top_p=1,
                     frequency_penalty=0,
