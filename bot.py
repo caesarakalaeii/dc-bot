@@ -876,8 +876,9 @@ class GPTBot():
                 messages= conversation.conversation
                 if len(messages) > 10:
                     old = messages
-                    messages = old[0]
-                    messages.append(messages[-10:])
+                    messages = [old[0]]
+                    for m in old[-10:]:
+                        messages.append(m)
                 
                 response = openai.ChatCompletion.create(
                     model=self.MODEL_NAME,
