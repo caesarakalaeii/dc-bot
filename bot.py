@@ -266,6 +266,12 @@ class GPTBot():
                 "help": "!load_author user_id: Tries to load author by ID, load conversation first!",
                 "value_type": int,
                 "func": self.loadAuthor
+            },
+            "!clear_memory":{
+                "perm": 10,
+                "help": "!clear_memory: clears conversations from memory, while retaining .jsons unchanged",
+                "value_type": None,
+                "func": self.clearMemory
             }
             
             
@@ -560,6 +566,13 @@ class GPTBot():
             self.logger.warning(reply)
         return reply
     
+    async def clearMemory(self, author, message):
+        reply = f"{author.name} cleared memory"
+        self.logger.warning(f"{author.name} cleared memory")
+        for c in self.conversations:
+            del self.conversations[self.conversations.index(c)]
+        return reply
+    
     async def help(self, author, message):
         self.logger.warning(f"{author.name} asked for help.")
         reply = "Available Commands: \n"
@@ -671,7 +684,7 @@ class GPTBot():
                 if c.user == splits[1]:
                     await self.collectMessage(reply, c.author, "gpt")
                     await c.author.send(reply)
-                    return reply
+                    return "Sending User defined Message"
         elif len(splits) == 2:
             fetch_last_message = True
         else:
