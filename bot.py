@@ -602,7 +602,7 @@ class GPTBot():
                 self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
-                if len(values) > 2:
+                if len(values) > 0:
                     loadedConv = ConversationHandler(name, self.bot_name, init_prompt=self.init_prompt)
                     self.conversations.append(loadedConv)
                     reply = f"Fake loaded conversation {name}"
