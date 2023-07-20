@@ -588,7 +588,7 @@ class GPTBot():
     async def load_conv(self, author, message):
         reply = None
         name, values = self.handleArgs(message)
-        if len(values) >= 1 and int(self.white_list[author.name]) >= self.commands["!load_conv"]["perm"]:
+        if len(values) >= 0 and int(self.white_list[author.name]) >= self.commands["!load_conv"]["perm"]:
             self.logger.warning(f"{author.name} loading conversation {name}")
             try:
                 for conversation in self.conversations:
@@ -608,7 +608,7 @@ class GPTBot():
                     reply = f"Fake loaded conversation {name}"
                 else:
                     reply = f"Conversation {name} not found"
-        elif len(values) == 1 and int(self.white_list[author.name]) < self.commands["!load_conv"]["perm"]:
+        elif len(values) == 0 and int(self.white_list[author.name]) < self.commands["!load_conv"]["perm"]:
             self.logger.warning(f"{author.name} tried loading conversation {name}, without neccessary permission")
             reply = f"Please provide a conversation number."
         elif len(values) > 1:
