@@ -155,7 +155,7 @@ class GPTBot():
                 },
             "!load_conv": {
                 "perm": 10,
-                "help": "!load_conv user number: Loads specific Conversation",
+                "help": '!load_conv "user" ["number"]: Loads specific Conversation',
                 "value_type": [str,int],
                 "func": self.load_conv
                 },
@@ -225,15 +225,9 @@ class GPTBot():
                 "value_type": str,
                 "func": self.disable_commands
                 },
-            "!force_load":{
-                "perm":5,
-                "help":"!force_load: loads latest conversation, if available",
-                "value_type": None,
-                "func": self.force_load
-                },
             "!del_specific":{
                 "perm":10,
-                "help":"!del_specific user: deletes conversation log of specific user from memory",
+                "help":'!del_specific "user": deletes conversation log of specific user from memory',
                 "value_type": str,
                 "func": self.del_specific_conv
                 },
@@ -257,7 +251,7 @@ class GPTBot():
             },
             "!force_resend":{
                 "perm": 10,
-                "help": "!force_resend name: Tries to send last message",
+                "help": '!force_resend "name" ["message"]: Tries to send last message or specified message',
                 "value_type": str,
                 "func": self.resendMsg
             },
@@ -287,7 +281,7 @@ class GPTBot():
             },
             "!whitelist":{
                 "perm": 15,
-                "help": "!whitelist user value: whitelists user with permission value 1-15, to deactivate commands set value to 0",
+                "help": '!whitelist "user" "value": whitelists user with permission value 1-15, to deactivate commands set value to 0',
                 "value_type": [str, int],
                 "func": self.whitelist
             },
@@ -305,7 +299,7 @@ class GPTBot():
             },
             "!init_conv":{
                 "perm": 10,
-                "help": "!init_conv user id message: Initializes conversation with message to user with id",
+                "help": '!init_conv "user" "id" "message": Initializes conversation with message to user with id',
                 "value_type": [str, int, str],
                 "func": self.init_conv
             }
@@ -338,6 +332,92 @@ class GPTBot():
         self.white_list = loaded_white
         
         self.tasks = {}   
+        
+    async def collectMessage(self,message, author, sender):
+        user = author.name
+        for conversation in self.conversations:
+            if conversation.user == user:
+                if conversation.author == None:
+                    conversation.author == author
+                if sender == "gpt":
+                    self.logger.chatReply(user, self.bot_name, message)
+                    conversation.updateGPT(message)
+                    conversation.writeConversation()
+                    return
+                else:
+                    self.logger.userReply(user, message)
+                    conversation.updateUser(message)
+                    conversation.writeConversation()
+                    return
+        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
+        newConv.updateUser(message)
+        newConv.writeConversation()
+        self.conversations.append(newConv)
+        self.logger.userReply(user, message)
+        
+    async def check_command(self, message: str, author):
+        if not self.commands_enabled:
+            return False
+        reply = None
+        try:
+            for command, value in self.commands.items():
+                if message.startswith(command) and int(self.white_list[author.name]) > 15:
+                    self.logger.warning(f"{author.name} invoked {command} with too much permissions")
+                    reply = "Bruh"
+                elif message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
+                    reply = await value["func"](author, message)
+                elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
+                    reply = f"I'm sorry {author.name}. I'm afraid can't do that."
+                    self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
+                elif self.white_list[author.name] == "0":
+                    self.logger.warning(f"{author.name} invoked {command} with 0 permissions")
+                    return True
+            if message.startswith("!") and reply == None:
+                reply = "Unknown Command."
+        except KeyError:
+            return False
+        if not reply == None:
+            await author.send(reply)
+            return True
+        
+        
+        return False
+        
+    def handleArgs(self, message:str):
+        message_splits = message.split(sep=" ")
+        handling_name = False
+        handling_value = False
+        name = ""
+        value = ""
+        values = []
+        for s in message_splits:
+            if s.endswith('"') and handling_value:
+                value +=" " + s.replace('"', '')
+                values.append(value)
+                value = ""
+                continue
+            elif s.startswith('"') and handling_name:
+                handling_value = True
+                value += s.replace('"', '')
+                if s.endswith('"'):
+                    values.append(value)
+                    value = ""
+                continue
+            elif handling_value:
+                value += " "+s
+            elif handling_name:
+                if s.endswith('"'):
+                    name +=" " + s.replace('"', '')
+                    continue
+                name += " "+s
+            elif s.startswith('"') and not handling_value:
+                handling_name = True
+                name += s.replace('"', '')
+                continue
+            continue
+            
+                
+        return name, values
         
     def load_blacklist(self):
         if os.path.exists("blacklist.json"):
@@ -399,10 +479,11 @@ class GPTBot():
         if len(splits) <3:
             reply = "no user and/or value provided"
         else:
-            self.white_list.update({splits[1]: splits[2]})
+            name, value = self.handleArgs(splits)
+            self.white_list.update({name: value})
             self.write_whitelist()
-            self.logger.warning(f"{author.name} whitelisted {splits[1]} with {splits[2]}")
-            reply = f"{splits[1]} is now whitelisted {splits[1]} with {splits[2]}"
+            self.logger.warning(f"{author.name} whitelisted {name} with {value}")
+            reply = f"{name} is now whitelisted with {value}"
         
         return reply
     
@@ -418,68 +499,17 @@ class GPTBot():
         self.logger.warning(f"{author.name} reloaded whitelist with values {self.white_list}")
         return f"Whitelist loaded with values {self.white_list}"
     
-    async def collectMessage(self,message, author, sender):
-        user = author.name
-        for conversation in self.conversations:
-            if conversation.user == user:
-                if conversation.author == None:
-                    conversation.author == author
-                if sender == "gpt":
-                    self.logger.chatReply(user, self.bot_name, message)
-                    conversation.updateGPT(message)
-                    conversation.writeConversation()
-                    return
-                else:
-                    self.logger.userReply(user, message)
-                    conversation.updateUser(message)
-                    conversation.writeConversation()
-                    return
-        newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
-        newConv.updateUser(message)
-        newConv.writeConversation()
-        self.conversations.append(newConv)
-        self.logger.userReply(user, message)
-        
-    async def check_command(self, message: str, author):
-        if not self.commands_enabled:
-            return False
-        reply = None
-        try:
-            for command, value in self.commands.items():
-                if message.startswith(command) and int(self.white_list[author.name]) > 15:
-                    self.logger.warning(f"{author.name} invoked {command} with too much permissions")
-                    reply = "Bruh"
-                elif message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
-                    reply = await value["func"](author, message)
-                elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
-                    reply = f"I'm sorry {author.name}. I'm afraid can't do that."
-                    self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
-                elif self.white_list[author.name] == "0":
-                    self.logger.warning(f"{author.name} invoked {command} with 0 permissions")
-                    return True
-            if message.startswith("!") and reply == None:
-                reply = "Unknown Command."
-        except KeyError:
-            return False
-        if not reply == None:
-            await author.send(reply)
-            return True
-        
-        
-        return False
-    
     async def init_conv(self, author, message):
         reply = None
-        splits = message.split(" ")
+        name, values = self.handleArgs(message)
         self.logger.warning(f"{author.name} tries to initialze conversation")
-        if len(splits) > 4:
-            await self.load_conv(author,f"!load_conv {splits[1]} force")
-            await self.loadAuthor(author, f"!load_author {splits[2]}")
-            send = ""
-            for m in splits [3:]:
-                send += m
-            await self.resendMsg(author,f"!force_resend {splits[1]} {send}")
-            reply = "Initialized conversation with {splits[1]} with id {splits[2]}.\nMessage is: {send}"
+        
+        if len(values) >= 2:
+            await self.load_conv(author,f'!load_conv "{name}" "force"')
+            await self.loadAuthor(author, f"!load_author {values[0]}")
+            send = values[1]
+            await self.resendMsg(author,f'!force_resend "{name}" "{send}"')
+            reply = f"Initialized conversation with {name} with id {values[0]}.\nMessage is: {send}"
         else:
             reply = "Too little information to initialize conversation"
         self.logger.info(reply)
@@ -535,8 +565,7 @@ class GPTBot():
     async def del_specific_conv(self, author, message):
         reply = None
         found_conv = False
-        parts = message.split(sep=" ")
-        name = parts[1]
+        name, values = self.handleArgs(message)
         for conversation in self.conversations:
             if conversation.user == name:
                 found_conv = True
@@ -558,48 +587,48 @@ class GPTBot():
             
     async def load_conv(self, author, message):
         reply = None
-        parts = message.split(sep=" ")
-        if len(parts) >= 2 and int(self.white_list[author.name]) >= self.commands["!load_conv"]["perm"]:
-            self.logger.warning(f"{author.name} loading conversation {parts[1]}")
+        name, values = self.handleArgs(message)
+        if len(values) >= 1 and int(self.white_list[author.name]) >= self.commands["!load_conv"]["perm"]:
+            self.logger.warning(f"{author.name} loading conversation {name}")
             try:
                 for conversation in self.conversations:
                     if conversation.user == author.name:
                         conversation.saveConversation()
                         del self.conversations[self.conversations.index(conversation)]
-                loadedConv = ConversationHandler.loadConversation(parts[1], None, self.bot_name)
+                loadedConv = ConversationHandler.loadConversation(name, None, self.bot_name)
                 newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(newConv)
-                loadedConv = ConversationHandler(parts[1], self.bot_name, conversation = loadedConv)
+                loadedConv = ConversationHandler(name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
-                if len(parts) > 2:
-                    loadedConv = ConversationHandler(parts[1], self.bot_name, init_prompt=self.init_prompt)
+                if len(values) > 2:
+                    loadedConv = ConversationHandler(name, self.bot_name, init_prompt=self.init_prompt)
                     self.conversations.append(loadedConv)
-                    reply = f"Fake loaded conversation {parts[1]}"
+                    reply = f"Fake loaded conversation {name}"
                 else:
-                    reply = f"Conversation {parts[1]} not found"
-        elif len(parts) == 2 and int(self.white_list[author.name]) < self.commands["!load_conv"]["perm"]:
-            self.logger.warning(f"{author.name} tried loading conversation {parts[1]}, without neccessary permission")
+                    reply = f"Conversation {name} not found"
+        elif len(values) == 1 and int(self.white_list[author.name]) < self.commands["!load_conv"]["perm"]:
+            self.logger.warning(f"{author.name} tried loading conversation {name}, without neccessary permission")
             reply = f"Please provide a conversation number."
-        elif len(parts) > 2:
-            self.logger.warning(f"{author.name} loading conversation {parts[1]}_{parts[2]}")
+        elif len(values) > 1:
+            self.logger.warning(f"{author.name} loading conversation {name}_{values[0]}")
             try:
                 for conversation in self.conversations:
                     if conversation.user == author.name:
                         conversation.saveConversation()
                         del self.conversations[self.conversations.index(conversation)]
-                loadedConv = ConversationHandler.loadConversation(parts[1], parts[2], self.bot_name)
+                loadedConv = ConversationHandler.loadConversation(name, values[0], self.bot_name)
                 newConv = ConversationHandler(author.name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(newConv)
-                loadedConv = ConversationHandler(parts[1], self.bot_name, conversation = loadedConv)
+                loadedConv = ConversationHandler(name, self.bot_name, conversation = loadedConv)
                 self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
-                reply = f"Conversation {parts[1]}_{parts[2]} not found"
+                reply = f"Conversation {name}_{values[0]} not found"
                 
         else:
-            reply = "Command usage is !load_conv user number"
+            reply = 'Command usage is !load_conv "user" "number"'
         self.logger.info(reply)
         
         return reply
@@ -756,17 +785,6 @@ class GPTBot():
             reply = "No Password provided, this event will be reported!"
             self.logger.error(reply)
         return reply
-
-    async def force_load(self, author, message):
-        reply = None
-        try:
-            await self.del_conv(author, message)
-            self.conversations.append(ConversationHandler(author.name, self.bot_name, self.init_prompt))
-            reply = f"Loaded conversation with {author.name} into memory"
-        except FileNotFoundError:
-            reply = f"Conversation with {author.name} couldn't be found"
-        self.logger.info(reply)
-        return reply
     
     async def save_all(self, author, message):
         self.logger.warning(f"{author.name} requested to save all conversations.")
@@ -815,26 +833,25 @@ class GPTBot():
     
     async def resendMsg(self, author, message):
         fetch_last_message = False
-        splits = message.split(" ")
+        name, values = self.handleArgs(message)
         reply = None
-        if len(splits) > 2:
+        if len(values) > 0:
             reply = ""
             self.logger.warning("Sending User defined Message")
-            for m in splits[2:]:
-                reply += m + " "
+            reply = values[0]
             for c in self.conversations:
-                if c.user == splits[1]:
+                if c.user == name:
                     await self.collectMessage(reply, c.author, "gpt")
                     await c.author.send(reply)
                     return "Sending User defined Message"
-        elif len(splits) == 2:
+        elif len(values) == 0:
             fetch_last_message = True
         else:
             reply = "No Arguments given!"
             return reply
-        self.logger.warning(f"{author.name} requested resend to {splits[1]}")
+        self.logger.warning(f"{author.name} requested resend to {name}")
         for c in self.conversations:
-            if c.user == splits[1]:
+            if c.user == name:
                 if fetch_last_message:
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
