@@ -675,7 +675,7 @@ class GPTBot():
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed Max Tokens")
-        self.max_tokens = parts[1]
+        self.max_tokens = int(parts[1])
         reply = f"Max_tokends is now: {self.max_tokens}"
         self.logger.info(reply)
         return reply
@@ -684,7 +684,7 @@ class GPTBot():
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed delay")
-        self.timer_duration = parts[1]
+        self.timer_duration = int(parts[1])
         reply = f"Minimum delay is now: {self.timer_duration}"
         self.logger.info(reply)
         return reply
