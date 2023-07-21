@@ -412,8 +412,11 @@ class GPTBot():
                 name += " "+s
             elif s.startswith('"') and not handling_value:
                 handling_name = True
+                if s.endswith('"'):
+                    values.append(value)
+                    name = s.replace('"', '')
+                    continue
                 name += s.replace('"', '')
-                continue
             continue
             
                 
@@ -663,7 +666,7 @@ class GPTBot():
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed Temperature")
-        self.temperature = parts[1]
+        self.temperature = float(parts[1])
         reply = f"Temparature is now: {self.temperature}"
         self.logger.info(reply)
         return reply
