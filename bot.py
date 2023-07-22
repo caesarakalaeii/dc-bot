@@ -481,8 +481,8 @@ class GPTBot():
         if len(splits) <3:
             reply = "no user and/or value provided"
         else:
-            name, value = self.handleArgs(splits)
-            self.white_list.update({name: value})
+            name, value = self.handleArgs(message)
+            self.white_list.update({name: int(value[0])})
             self.write_whitelist()
             self.logger.warning(f"{author.name} whitelisted {name} with {value}")
             reply = f"{name} is now whitelisted with {value}"
