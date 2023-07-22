@@ -413,7 +413,6 @@ class GPTBot():
             elif s.startswith('"') and not handling_value:
                 handling_name = True
                 if s.endswith('"'):
-                    values.append(value)
                     name = s.replace('"', '')
                     continue
                 name += s.replace('"', '')
