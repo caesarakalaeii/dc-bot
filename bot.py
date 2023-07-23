@@ -516,20 +516,22 @@ class GPTBot():
         
         if len(values) >= 2:
             await self.load_conv(message_object, force=True)
-            await self.loadAuthor(author, f"!load_author {values[0]}")
+            await self.loadAuthor(message_object, id = values[0])
             send = values[1]
-            await self.resendMsg(author,f'!force_resend "{name}" "{send}"')
+            await self.resendMsg(message_object)
             reply = f"Initialized conversation with {name} with id {values[0]}.\nMessage is: {send}"
         else:
             reply = "Too little information to initialize conversation"
         self.logger.info(reply)
         return reply
     
-    async def loadAuthor(self, message_object):
+    async def loadAuthor(self, message_object, id = None):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
         found_author = False
         parts = message.split(" ")
+        if not id is None:
+            parts[1] = id
         if len(parts) >= 2:
             self.logger.warning(f"{author.name} requested to load author with ID {parts[1]}")
             target_user = await self.bot.fetch_user(int(parts[1]))
@@ -606,7 +608,7 @@ class GPTBot():
             self.logger.warning(f"{author.name} loading conversation {name}")
             try:
                 for conversation in self.conversations:
-                    if conversation.user == author.name:
+                    if conversation.user == name:
                         conversation.saveConversation()
                         del self.conversations[self.conversations.index(conversation)]
                 loadedConv = ConversationHandler.loadConversation(name, None, self.bot_name)
@@ -870,7 +872,10 @@ class GPTBot():
         if len(values) > 0:
             reply = ""
             self.logger.warning("Sending User defined Message")
-            reply = values[0]
+            if len(values) >1:
+                reply = values[1]
+            else:
+                reply = values[0]
             for c in self.conversations:
                 if c.user == name:
                     await self.collectMessage(reply, c.author, "gpt")
@@ -891,6 +896,7 @@ class GPTBot():
                         return "Requested new Message from GPT"
                     else:
                         reply = last_conv["content"]
+                        
                         
                 if not c.author == None:
                     self.logger.warning("Resending Message")
