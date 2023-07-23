@@ -355,7 +355,9 @@ class GPTBot():
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
         
-    async def check_command(self, message: str, author):
+    async def check_command(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
+        
         if not self.commands_enabled:
             return False
         reply = None
@@ -365,7 +367,7 @@ class GPTBot():
                     self.logger.warning(f"{author.name} invoked {command} with too much permissions")
                     reply = "Bruh"
                 elif message.startswith(command) and int(self.white_list[author.name]) >= value["perm"]:
-                    reply = await value["func"](author, message)
+                    reply = await value["func"](message_object)
                 elif message.startswith(command) and int(self.white_list[author.name]) < value["perm"]:
                     reply = f"I'm sorry {author.name}. I'm afraid can't do that."
                     self.logger.warning(f"{author.name} invoked {command} without neccessary permissions")
@@ -435,7 +437,8 @@ class GPTBot():
         else: 
             raise FileNotFoundError
         
-    async def ban(self, author, message):
+    async def ban(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         splits = message.split(" ")
         if len(splits) <2:
@@ -448,7 +451,8 @@ class GPTBot():
         
         return reply
     
-    async def unban(self, author, message):
+    async def unban(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         splits = message.split(" ")
         if len(splits) <2:
@@ -475,7 +479,8 @@ class GPTBot():
         else: 
             raise FileNotFoundError
     
-    async def whitelist(self, author, message):
+    async def whitelist(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         splits = message.split(" ")
         if len(splits) <3:
@@ -489,19 +494,22 @@ class GPTBot():
         
         return reply
     
-    async def reload_blacklist(self, author, message):
+    async def reload_blacklist(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         
         self.black_list = self.load_blacklist()
         self.logger.warning(f"{author.name} reloaded blacklist with values {self.black_list}")
         return f"Blacklist loaded with values {self.black_list}"
     
-    async def reload_whitelist(self, author, message):
+    async def reload_whitelist(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         
         self.black_list = self.load_whitelist()
         self.logger.warning(f"{author.name} reloaded whitelist with values {self.white_list}")
         return f"Whitelist loaded with values {self.white_list}"
     
-    async def init_conv(self, author, message):
+    async def init_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         name, values = self.handleArgs(message)
         self.logger.warning(f"{author.name} tries to initialze conversation")
@@ -517,7 +525,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
     
-    async def loadAuthor(self, author, message):
+    async def loadAuthor(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         found_author = False
         parts = message.split(" ")
@@ -541,7 +550,8 @@ class GPTBot():
         self.logger.warning(reply)
         return reply
     
-    async def del_conv(self, author, message):
+    async def del_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         found_conv = False
         for conversation in self.conversations:
@@ -564,7 +574,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
     
-    async def del_specific_conv(self, author, message):
+    async def del_specific_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         found_conv = False
         name, values = self.handleArgs(message)
@@ -587,7 +598,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
             
-    async def load_conv(self, author, message):
+    async def load_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         name, values = self.handleArgs(message)
         if len(values) >= 0 and int(self.white_list[author.name]) >= self.commands["!load_conv"]["perm"]:
@@ -635,7 +647,8 @@ class GPTBot():
         
         return reply
                     
-    async def list_conv(self, author, message):
+    async def list_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         self.logger.warning(f"{author.name} listed all conversations")
         reply = ConversationHandler.listConversations(self.bot_name)
@@ -644,7 +657,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
                     
-    async def toggle_test_mode(self, author, message):
+    async def toggle_test_mode(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         self.logger.warning(f"{author.name} toggled test_mode")
         self.test_mode= not self.test_mode
@@ -652,7 +666,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def toggle_test_prompt(self, author, message):
+    async def toggle_test_prompt(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         self.logger.warning(f"{author.name} toggled test_test_prompt")
         self.use_test_prompt= not self.use_test_prompt
@@ -661,7 +676,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
 
-    async def set_temp(self, author, message):
+    async def set_temp(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed Temperature")
@@ -670,7 +686,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def set_max_tokens(self, author, message):
+    async def set_max_tokens(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed Max Tokens")
@@ -679,7 +696,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def set_delay(self, author, message):
+    async def set_delay(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         parts = message.split(sep=" ")
         reply = None
         self.logger.warning(f"{author.name} changed delay")
@@ -688,7 +706,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def get_config(self, author, message):
+    async def get_config(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         self.logger.warning(f"{author.name} requested settings")
         replys = []
@@ -708,7 +727,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def repeat_conv(self, author, message):
+    async def repeat_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         splits = message.split(" ")
         name = author.name
@@ -739,14 +759,16 @@ class GPTBot():
             self.logger.warning(reply)
         return reply
     
-    async def clearMemory(self, author, message):
+    async def clearMemory(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = f"{author.name} cleared memory"
         self.logger.warning(f"{author.name} cleared memory")
         for c in self.conversations:
             del self.conversations[self.conversations.index(c)]
         return reply
     
-    async def help(self, author, message):
+    async def help(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         self.logger.warning(f"{author.name} asked for help.")
         reply = "Available Commands: \n"
         for command, value in self.commands.items():
@@ -755,7 +777,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
     
-    async def get_init_prompt(self, author, message):
+    async def get_init_prompt(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None	
         self.logger.warning(f"{author.name} asked for the prompt.")
         for conv in self.conversations:
@@ -771,7 +794,8 @@ class GPTBot():
         self.logger.info(reply)
         return reply
     
-    async def disable_commands(self, author, message):
+    async def disable_commands(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         parts = message.split(sep=" ")
         reply = None
         
@@ -788,7 +812,8 @@ class GPTBot():
             self.logger.error(reply)
         return reply
     
-    async def save_all(self, author, message):
+    async def save_all(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         self.logger.warning(f"{author.name} requested to save all conversations.")
         if len(self.conversations) > 0:
             for c in self.conversations:
@@ -799,14 +824,16 @@ class GPTBot():
         self.logger.info(reply)
         return reply
             
-    async def shutdown(self, author, message):
+    async def shutdown(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         self.logger.error(f"{author.name} initiated shutdown, saving conversations.")
-        await self.save_all(author, message)
+        await self.save_all(message_object)
         self.logger.error("Saved conversations.\nShutting down.")
     
         exit()
     
-    async def getMessageLog(self, author, message):
+    async def getMessageLog(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         reply = None
         splits = message.split(" ")
         if not bot == None:
@@ -833,7 +860,10 @@ class GPTBot():
             self.logger.warning(reply)
         return reply
     
-    async def resendMsg(self, author, message):
+    async def resendMsg(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
+        if len(files) == 0:
+            files = None
         fetch_last_message = False
         name, values = self.handleArgs(message)
         reply = None
@@ -844,7 +874,7 @@ class GPTBot():
             for c in self.conversations:
                 if c.user == name:
                     await self.collectMessage(reply, c.author, "gpt")
-                    await c.author.send(reply)
+                    await c.author.send(reply, files=files)
                     return "Sending User defined Message"
         elif len(values) == 0:
             fetch_last_message = True
@@ -878,23 +908,29 @@ class GPTBot():
         self.logger.warning(reply)
         return reply
   
+    async def unpackMessage(self, message_object):
+        files = []
+        
+        for a in message_object.attachments:
+            files.append(await a.to_file())
+        return message_object.content, message_object.author, files
+    
     async def messageHandler(self, message):
-        user_prompt = message.content
-        name = message.author.name
-        if f"{message.author.id}" in self.black_list:
-            await message.author.send("You have no power here!")
+        user_prompt, author, files = await self.unpackMessage(message)
+        name = author.name
+        if f"{author.id}" in self.black_list:
+            await author.send("You have no power here!")
             return
-        if await self.check_command(user_prompt, message.author):
+        if await self.check_command(message):
             return
-        media = message.attachments
-        media_amount = len(media)
+        media_amount = len(files)
         if media_amount > 0:
-            ConversationHandler.saveMedia(name, media)
+            ConversationHandler.saveMedia(name, files)
             filenames = ""
-            for m in media:
+            for m in files:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        await self.collectMessage(user_prompt, message.author, "user")
+        await self.collectMessage(user_prompt, author, "user")
         if len(self.tasks) > 0 and name in self.tasks.keys():
             for task in self.tasks.values():
                 if task is not None:
