@@ -515,7 +515,7 @@ class GPTBot():
         self.logger.warning(f"{author.name} tries to initialze conversation")
         
         if len(values) >= 2:
-            await self.load_conv(author,f'!load_conv "{name}" "force"')
+            await self.load_conv(message_object, force=True)
             await self.loadAuthor(author, f"!load_author {values[0]}")
             send = values[1]
             await self.resendMsg(author,f'!force_resend "{name}" "{send}"')
@@ -598,7 +598,7 @@ class GPTBot():
         self.logger.info(reply)
         return reply
             
-    async def load_conv(self, message_object):
+    async def load_conv(self, message_object, force = False):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
         name, values = self.handleArgs(message)
@@ -616,7 +616,7 @@ class GPTBot():
                 self.conversations.append(loadedConv)
                 reply = "Loaded conversation"
             except FileNotFoundError:
-                if len(values) > 0:
+                if force:
                     loadedConv = ConversationHandler(name, self.bot_name, init_prompt=self.init_prompt)
                     self.conversations.append(loadedConv)
                     reply = f"Fake loaded conversation {name}"
