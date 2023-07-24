@@ -6,7 +6,7 @@ from bot import ConversationHandler
 bot_token = DISCORD_TOKEN_ALEX
 
 # Replace 'TARGET_USER_ID' with the ID of the user whose DMs you want to fetch
-target_user_id = 'TARGET_ID'
+target_user_id = 'TARGET_USER_ID'
 
 # Create a new Discord bot client
 intents = discord.Intents.default()
