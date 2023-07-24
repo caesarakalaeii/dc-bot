@@ -932,7 +932,7 @@ class GPTBot():
             return
         media_amount = len(files)
         if media_amount > 0:
-            ConversationHandler.saveMedia(name, attachments = message.attachments)
+            ConversationHandler.saveMedia(name,message.attachments)
             filenames = ""
             for m in files:
                 filenames += m.filename +", "
