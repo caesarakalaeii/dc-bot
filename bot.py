@@ -916,8 +916,9 @@ class GPTBot():
   
     async def unpackMessage(self, message_object):
         files = []
+        attachments = message_object.attachments
         
-        for a in message_object.attachments:
+        for a in attachments:
             files.append(await a.to_file())
         return message_object.content, message_object.author, files
     
@@ -931,7 +932,7 @@ class GPTBot():
             return
         media_amount = len(files)
         if media_amount > 0:
-            ConversationHandler.saveMedia(name, files)
+            ConversationHandler.saveMedia(name, attachments = message.attachments)
             filenames = ""
             for m in files:
                 filenames += m.filename +", "
