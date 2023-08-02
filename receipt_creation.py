@@ -6,7 +6,7 @@ import discord
 
 DEFAULT_IMAGE_PATH = "paypal_blank.png"
 
-MONTHS_GER = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+MONTHS_GER = ['Januar', 'Februar', 'Marz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 BOLD_LOCATIONS = [((83,34), 20, (0,  0, 0, 255), "name", "lb"),   #Name #1
                   ((984,38), 25, (0,  0, 0, 255), "amount", "rb"),  #Amount #1
