@@ -1170,7 +1170,7 @@ class GPTBot():
         store_name = values[1]
         amount = values[2]
         target_user = await self.bot.fetch_user(user_id)
-        file = await image_creation(amount,store_name)
+        file = image_creation(amount,store_name)
         self.logger.warning(f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}")
         chat_reply = "Here is the PayPal receipt:"
         await self.collectMessage(chat_reply, target_user, "gpt", [file])
