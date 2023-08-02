@@ -321,7 +321,7 @@ class GPTBot():
             },
             "!fake_receipt":{
                 "perm": 10,
-                "help": '!fake_receipt "user" "id" "store name" "amount": Fakes a PayPal receipt for the given Store name and Amount (Currently only in german)',
+                "help": '!fake_receipt "user" "id" "amount" "store name": Fakes a PayPal receipt for the given Store name and Amount (Currently only in german)',
                 "value_type": [str, int, str, int],
                 "func": self.fake_receipt
             }
