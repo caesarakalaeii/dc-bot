@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 import discord
 from discord.ext import commands
 import json
@@ -135,7 +136,17 @@ class ConversationHandler():
                     i+=i
         
 
+class QueueItem():
+    message : discord.Message
+    timestamp : float
+    
+    def __init__(self, message: discord.Message) -> None:
+        self.message = message
+        self.timestamp = time.time()
+
 class GPTBot():
+    'TODO get type defs going'
+    queue: asyncio.Queue
     
     
     def __init__(self, bot_token = None, gpt_api_key = None, bot_name = None,
@@ -342,6 +353,7 @@ class GPTBot():
         self.white_list = loaded_white
         self.threads = self.loadThreads()
         self.tasks = {}   
+        self.queue = asyncio.Queue()
     
     '''Utility methods'''
         
@@ -353,17 +365,17 @@ class GPTBot():
                     conversation.author == author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
-                    for u,t in self.threads.items():
-                        if u == user:
-                            await self.replyToThread(t["thread_id"], message, files, sender)
+                    for thread in self.threads:
+                        if user in thread.keys():
+                            await self.replyToThread(thread[user]["thread_id"], message, files, sender)
                     conversation.updateGPT(message)
                     conversation.writeConversation()
                     return
                 else:
                     self.logger.userReply(user, message)
-                    for u,t in self.threads.items():
-                        if u == user:
-                            await self.replyToThread(t["thread_id"], message, files, author)
+                    for thread in self.threads:
+                        if user in thread.keys():
+                            await self.replyToThread(thread[user]["thread_id"], message, files, author)
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
@@ -371,6 +383,8 @@ class GPTBot():
         newConv.updateUser(message)
         newConv.writeConversation()
         thread_id = None
+        self.conversations.append(newConv)
+        self.logger.userReply(user, message)
         for thread in self.threads:
             if user in thread.keys():
                 thread_id = thread[user]["thread_id"]
@@ -378,8 +392,127 @@ class GPTBot():
             thread = await self.createThread(author)
             thread_id = thread.id
         await self.replyToThread(thread_id, message, files, author)
-        self.conversations.append(newConv)
-        self.logger.userReply(user, message)
+    
+    async def messageHandler(self, message):
+        user_prompt, author, files = await self.unpackMessage(message)
+        name = author.name
+        if f"{author.id}" in self.black_list:
+            await author.send("You have no power here!")
+            return
+        if await self.check_command(message):
+            return
+        media_amount = len(files)
+        if media_amount > 0:
+            ConversationHandler.saveMedia(name,message.attachments)
+            filenames = ""
+            for m in files:
+                filenames += m.filename +", "
+            user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
+        await self.collectMessage(user_prompt, author, "user")
+        for conversation in self.conversations:
+            if conversation.user == name:
+                conversation.appendUserMessage(user_prompt)
+
+        await self.queue.put(QueueItem(message))
+        await self.gpt_sending()
+
+    async def gpt_sending(self):
+        
+        q= await self.queue.get()
+        author = q.message.author
+        for conversation in self.conversations:
+            if conversation.user == author.name:
+                if not conversation.awaitingResponse():
+                    return
+                messages = [] #Kinda useless but also nice
+                message = ""
+                
+                reversed_conv = conversation.conversation.copy()
+                reversed_conv.reverse()
+                for c in reversed_conv:
+                    if c["role"] == "user":
+                        messages.append(c["content"])
+                    else:
+                        break
+                messages.reverse()
+                for m in messages:
+                    message += f"\n{m}"
+                message_lenght = len(message)
+                age = time.time()-q.timestamp
+                
+                    
+                if not self.test_mode:
+                    async with author.typing():
+                        if not age > self.timer_duration:
+                            await asyncio.sleep(random.randint(self.timer_duration - age,self.timer_duration + message_lenght - age)) #wait for further messages
+                        else:
+                            async with author.typing():
+                                await asyncio.sleep(5)
+                else: 
+                    async with author.typing():
+                        await asyncio.sleep(5)
+                messages= conversation.conversation
+                if len(messages) > 20:
+                    old = messages
+                    messages = [old[0]]
+                    for m in old[-20:]:
+                        messages.append(m)
+                
+                response = openai.ChatCompletion.create(
+                    model=self.MODEL_NAME,
+                    messages= messages,
+                    max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
+                    temperature=self.temperature,  # control over creativity
+                    n=1, # amount of answers
+                    top_p=1,
+                    frequency_penalty=0,
+                    presence_penalty=0  
+                )
+
+                # Die Antwort aus der response extrahieren
+                response_message = response['choices'][0]['message']
+                reply = response_message['content']
+                # Die Antwort an den Absender der DM zurückschicken
+                await self.collectMessage(reply,author ,"gpt")
+                if self.debug:
+                    self.logger.info(f"Reply: {reply}")
+                else:
+                    await author.send(reply)
+                self.queue.task_done()
+       
+    async def gpt_sending_user(self,author):
+        user = author.name
+        for conversation in self.conversations:
+            if conversation.user == user:
+                if not conversation.awaitingResponse():
+                    return
+                messages= conversation.conversation
+                if len(messages) > 20:
+                    old = messages
+                    messages = [old[0]]
+                    for m in old[-20:]:
+                        messages.append(m)
+                
+                response = openai.ChatCompletion.create(
+                    model=self.MODEL_NAME,
+                    messages= messages,
+                    max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
+                    temperature=self.temperature,  # control over creativity
+                    n=1, # amount of answers
+                    top_p=1,
+                    frequency_penalty=0,
+                    presence_penalty=0  
+                ) 
+                # Die Antwort aus der response extrahieren
+                response_message = response['choices'][0]['message']
+                reply = response_message['content']
+                # Die Antwort an den Absender der DM zurückschicken
+                await self.collectMessage(reply,author ,"gpt")
+                if self.debug:
+                    self.logger.info(f"Reply: {reply}")
+                else:
+                    await author.send(reply)
+              
         
     async def replyToThread(self, thread_id, message, files = None, sender = None):
         channel = self.bot.get_channel(self.channel_id)
@@ -1000,7 +1133,7 @@ class GPTBot():
                 if fetch_last_message:
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
-                        self.tasks[c.user] = asyncio.create_task(self.gpt_sending(c.author, 1))
+                        self.gpt_sending_user(c.author)
                         return "Requested new Message from GPT"
                     else:
                         reply = last_conv["content"]
@@ -1030,32 +1163,6 @@ class GPTBot():
             files.append(await a.to_file())
         return message_object.content, message_object.author, files
     
-    async def messageHandler(self, message):
-        user_prompt, author, files = await self.unpackMessage(message)
-        name = author.name
-        if f"{author.id}" in self.black_list:
-            await author.send("You have no power here!")
-            return
-        if await self.check_command(message):
-            return
-        media_amount = len(files)
-        if media_amount > 0:
-            ConversationHandler.saveMedia(name,message.attachments)
-            filenames = ""
-            for m in files:
-                filenames += m.filename +", "
-            user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        await self.collectMessage(user_prompt, author, "user")
-        if len(self.tasks) > 0 and name in self.tasks.keys():
-            for task in self.tasks.values():
-                if task is not None:
-                    for conversation in self.conversations:
-                        conversation.appendUserMessage(user_prompt)
-                        task.cancel()
-           
-        self.tasks[name] = asyncio.create_task(self.gpt_sending(message.author, len(message.content)))
-        await self.tasks[name]
-    
     async def fake_receipt(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         name, values = self.handleArgs(message)
@@ -1070,54 +1177,7 @@ class GPTBot():
         await target_user.send(chat_reply, file=file)
         return "Send faked receipt"
 
-    async def gpt_sending(self,author, message_lenght):
-        user = author.name
-        if not self.test_mode:
-            async with author.typing():
-                await asyncio.sleep(random.randint(self.timer_duration ,self.timer_duration + message_lenght)) #wait for further messages
-        else: 
-            async with author.typing():
-                await asyncio.sleep(5)
-        for conversation in self.conversations:
-            if conversation.user == user:
-                if not conversation.awaitingResponse():
-                    return
-                messages= conversation.conversation
-                if len(messages) > 20:
-                    old = messages
-                    messages = [old[0]]
-                    for m in old[-20:]:
-                        messages.append(m)
-                
-                response = openai.ChatCompletion.create(
-                    model=self.MODEL_NAME,
-                    messages= messages,
-                    max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
-                    temperature=self.temperature,  # control over creativity
-                    n=1, # amount of answers
-                    top_p=1,
-                    frequency_penalty=0,
-                    presence_penalty=0  
-                )
-
-                # Die Antwort aus der response extrahieren
-                response_message = response['choices'][0]['message']
-                reply = response_message['content']
-                # Die Antwort an den Absender der DM zurückschicken
-                await self.collectMessage(reply,author ,"gpt")
-                if self.debug:
-                    self.logger.info(f"Reply: {reply}")
-                else:
-                    await author.send(reply)
-                if len(self.tasks) > 0 and user in self.tasks.keys():
-                    for u,task in self.tasks.items():
-                        if u == user:
-                            if task is not None:
-                                task.cancel()
-                            del self.tasks[user]
-                if len(self.tasks) == 0:
-                    self.clcMem()
-                
+   
         
     
 #Not actually Used    
