@@ -9,16 +9,16 @@ DEFAULT_IMAGE_PATH = "paypal_blank.png"
 MONTHS_GER = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 BOLD_LOCATIONS = [((83,34), 20, (0,  0, 0, 255), "name", "lb"),   #Name #1
-                  ((984,36), 25, (0,  0, 0, 255), "amount", "rb"),  #Amount #1
+                  ((984,38), 25, (0,  0, 0, 255), "amount", "rb"),  #Amount #1
                   ((609, 349), 20, (16, 114, 235, 255), "name", "lb"),#Name Blue
-                  (( 982, 482), 25, (0,  0, 0, 255), "amount", "rb")  #Amount #4
+                  (( 982, 483), 25, (0,  0, 0, 255), "amount", "rb")  #Amount #4
                   ]
 
 LIGHT_LOCATIONS = [((82,58), 15, (0,  0, 0, 255), "date", "lb")] #Date
 
-NORMAL_LOCATIONS = [((982, 433), 25, (0,  0, 0, 255), "amount", "rb"),
+NORMAL_LOCATIONS = [((982, 434), 25, (0,  0, 0, 255), "amount", "rb"),
                     ((707,433), 20, (0,0,0,255), "name", "lb"),
-                    ((459,355), 25, (0,0,0,255), "amount", "rb")
+                    ((459,354), 25, (0,0,0,255), "amount", "rb")
                     ]
 
 SMALL_LOCATIONS = []
@@ -38,6 +38,8 @@ def image_creation(amount, name):
                 value = assessValue(values, amount, name)
                 if values[2] == (16, 114, 235, 255):
                     value += " schreiben"
+                elif values[0] == (984,38):
+                    value = f"- {value}"
                 d.text(values[0],value, font=font,fill = values[2], anchor=values[4])
                 
     out = Image.alpha_composite(img, txt)
@@ -57,14 +59,14 @@ def assessValue(values, amount, name):
     if "name" in values:
         return name
     elif "amount" in values:
-        return f"{amount} $"
+        return f"{amount},00 $"
     elif "date" in values:
         t = time.localtime()
         return (f"{t.tm_mday} {MONTHS_GER[t.tm_mon -1]} {t.tm_year}")
         
 
 
-if __name__ == '__main__':
-    
-    image_creation(500, "Caesar").show()
+#if __name__ == '__main__':
+#    _ , out = image_creation(500, "Caesar")
+#    out.show()
 
