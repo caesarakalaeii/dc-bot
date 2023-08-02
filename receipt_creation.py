@@ -1,6 +1,7 @@
 import io
 from PIL import Image, ImageDraw, ImageFont
 import time
+import asyncio
 
 import discord
 
@@ -50,8 +51,9 @@ async def image_creation(amount, name):
     
     # Reset the stream position to the beginning
     image_stream.seek(0)
-    
-    return discord.File(fp=image_stream, filename='receipt.png')
+    asyncio.sleep(5)
+    file = discord.File(fp=image_stream, filename='receipt.png')
+    return file
     
 
 
