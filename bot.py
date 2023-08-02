@@ -533,7 +533,7 @@ class GPTBot():
                     len_files = 0
                 else:
                     len_files = len(files)
-                self.logger.passing(f"Send reply: {reply} with {len_files} files")
+                self.logger.passing(f'Send reply: "{reply}" with {len_files} files')
                 await thread.send(reply, files= files)
             else:
                 self.logger.fail(f"Thread with {thread_id} not found in channel {self.channel_id} of guild {self.guild_id}")
