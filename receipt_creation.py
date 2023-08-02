@@ -28,7 +28,7 @@ FONT_TYPES = [('paypal_fonts/PayPalSansBig-Regular.woff', BOLD_LOCATIONS),
               ('paypal_fonts/PayPalSansSmall-Regular.woff', NORMAL_LOCATIONS),
               ('paypal_fonts/PayPalSansSmall-Medium.woff', SMALL_LOCATIONS)]
 
-def image_creation(amount, name):
+async def image_creation(amount, name):
     with Image.open(DEFAULT_IMAGE_PATH).convert("RGBA") as img:
         txt = Image.new("RGBA", img.size, (255, 255, 255, 0))
         d = ImageDraw.Draw(txt)
