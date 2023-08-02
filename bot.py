@@ -1175,8 +1175,8 @@ class GPTBot():
         file_size=file.fp.__sizeof__()
         self.logger.warning(f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}, file_size: {file_size}")
         chat_reply = "Here is the PayPal receipt:"
-        await self.collectMessage(chat_reply, target_user, "gpt", files)
-        await target_user.send(chat_reply, files)
+        await self.collectMessage(chat_reply, target_user, "gpt", files=files)
+        await target_user.send(chat_reply, files=files)
         return "Send faked receipt"
 
    
