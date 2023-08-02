@@ -8,6 +8,7 @@ import openai
 import requests
 
 from promt_creation import get_prompt, get_art_styles
+from receipt_creation import image_creation
 from api_secrets import *
 from logger import Logger
 
@@ -22,7 +23,7 @@ class ConversationHandler():
         self.init_prompt = init_prompt
         self.author = author
         self.base_prompt = {"role": "system", "content": self.init_prompt}
-         
+        
         if not conversation is None:
             self.conversation = conversation
         else:
@@ -137,15 +138,19 @@ class ConversationHandler():
 class GPTBot():
     
     
-    def __init__(self, bot_token, gpt_api_key, bot_name, 
-                 streamer_name, timer_duration = 300, art_styles = None, 
+    def __init__(self, bot_token = None, gpt_api_key = None, bot_name = None,
+                 channel_id = None, guild_id = None,
+                 streamer_name = None, timer_duration = 300, art_styles = None, 
                  test_mode = False, temperature = 0.7, max_tokens = 256, 
                  use_test_prompt = False, commands_enabled = True, admin_pw = None,
-                 stream_link = None):
+                 stream_link = None, debug = False):
         self.conversations = []
+        self.channel_id = channel_id
+        self.guild_id = guild_id
         self.commands_enabled = commands_enabled
         self.__admin_pw = admin_pw
         self.bot = None
+        self.debug = debug
         self.commands = {
             "!delete_conv": {
                 "perm": 5,
@@ -302,13 +307,18 @@ class GPTBot():
                 "help": '!init_conv "user" "id" "message": Initializes conversation with message to user with id',
                 "value_type": [str, int, str],
                 "func": self.init_conv
+            },
+            "!fake_receipt":{
+                "perm": 10,
+                "help": '!fake_receipt "user" "id" "store name" "amount": Fakes a PayPal receipt for the given Store name and Amount (Currently only in german)',
+                "value_type": [str, int, str, int],
+                "func": self.fake_receipt
             }
             
             
         }
         self.__bot_token = bot_token
         self.authors = []
-        
         self.logger = Logger(True, True)
         if self.__admin_pw == None:
             self.logger.error("No admin password provided, you will not be able to disable commands!")
@@ -330,10 +340,12 @@ class GPTBot():
         self.black_list = loaded_black
         loaded_white = self.load_whitelist()
         self.white_list = loaded_white
-        
+        self.threads = self.loadThreads()
         self.tasks = {}   
+    
+    '''Utility methods'''
         
-    async def collectMessage(self,message, author, sender):
+    async def collectMessage(self,message, author, sender, files = None):
         user = author.name
         for conversation in self.conversations:
             if conversation.user == user:
@@ -341,20 +353,58 @@ class GPTBot():
                     conversation.author == author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
+                    for u,t in self.threads.items():
+                        if u == user:
+                            await self.replyToThread(t["thread_id"], message, files, sender)
                     conversation.updateGPT(message)
                     conversation.writeConversation()
                     return
                 else:
                     self.logger.userReply(user, message)
+                    for u,t in self.threads.items():
+                        if u == user:
+                            await self.replyToThread(t["thread_id"], message, files, author)
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
         newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
         newConv.updateUser(message)
         newConv.writeConversation()
+        thread_id = None
+        for thread in self.threads:
+            if user in thread.keys():
+                thread_id = thread[user]["thread_id"]
+        if thread_id is None:       
+            thread = await self.createThread(author)
+            thread_id = thread.id
+        await self.replyToThread(thread_id, message, files, author)
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
         
+    async def replyToThread(self, thread_id, message, files = None, sender = None):
+        channel = self.bot.get_channel(self.channel_id)
+        if channel:
+            thread = None
+            for existing_thread in channel.threads:
+                if existing_thread.id == thread_id:
+                    thread = existing_thread
+                    break
+
+            if thread:
+                reply = ""
+                if sender == "gpt":
+                    reply = f"{self.bot_name} replys: {message}"
+                else:
+                    reply = f"{sender.name} says: {message}"
+                if files is None:
+                    len_files = 0
+                else:
+                    len_files = len(files)
+                self.logger.passing(f"Send reply: {reply} with {len_files} files")
+                await thread.send(reply, files= files)
+            else:
+                self.logger.fail(f"Thread with {thread_id} not found in channel {self.channel_id} of guild {self.guild_id}")
+       
     async def check_command(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         
@@ -436,7 +486,85 @@ class GPTBot():
                 f.write(json.dumps(self.black_list))
         else: 
             raise FileNotFoundError
+       
+    def load_whitelist(self):
+        if os.path.exists("whitelist.json"):
+            with open("whitelist.json", "r") as f:
+                return json.loads(f.read())
+        else: 
+            return []
         
+    def write_whitelist(self):
+    
+        if os.path.exists("whitelist.json"):
+            with open("whitelist.json", "w") as f:
+                f.write(json.dumps(self.white_list))
+        else: 
+            raise FileNotFoundError
+      
+    def clcMem(self):
+        for c in self.conversations:
+            del self.conversations[self.conversations.index(c)]
+        self.logger.error("Memory cleared") 
+       
+    def loadThreads(self):
+        if os.path.exists("threads.json"):
+            with open("threads.json", "r") as f:
+                return json.loads(f.read())
+        else: 
+            return []
+    
+    def writeThreads(self):
+        with open("threads.json", "w") as f:
+            f.write(json.dumps(self.threads))
+      
+    def runBot(self):
+        intents = discord.Intents.default()
+        intents.messages = True
+        intents.guilds = True
+        bot = discord.Client(intents=intents) 
+        
+        self.bot = bot
+        
+        @bot.event
+        async def on_ready():
+            self.logger.passing(f"Logged in as {bot.user.name}, given name: {self.bot_name}")
+
+        @bot.event
+        async def on_message(message):
+            if isinstance(message.channel, discord.DMChannel) and message.author != bot.user:
+                await self.messageHandler(message)
+        bot.run(self.__bot_token)
+        
+    async def createThread(self, author):
+        channel = self.bot.get_channel(self.channel_id)
+        if channel:
+            name = author.name
+            id  = author.id
+            thread = await channel.create_thread(name=f"{name} ({id})")
+            self.threads.append({
+                name : {
+                    "author_id":id,
+                    "thread_id":thread.id
+                }
+            })
+            self.writeThreads()
+            return thread   
+         
+    '''Command Methods'''
+    
+    
+    async def help(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
+        self.logger.warning(f"{author.name} asked for help.")
+        reply = "Available Commands: \n"
+        for command, value in self.commands.items():
+            if int(self.white_list[author.name]) >= value["perm"]:
+                reply += value["help"] + "\n"
+        self.logger.info(reply)
+        return reply
+  
+    
     async def ban(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -465,19 +593,13 @@ class GPTBot():
         
         return reply
     
-    def load_whitelist(self):
-        if os.path.exists("whitelist.json"):
-            with open("whitelist.json", "r") as f:
-                return json.loads(f.read())
-        else: 
-            return []
+    async def reload_blacklist(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
         
-    def write_whitelist(self):
-        if os.path.exists("whitelist.json"):
-            with open("whitelist.json", "w") as f:
-                f.write(json.dumps(self.white_list))
-        else: 
-            raise FileNotFoundError
+        self.black_list = self.load_blacklist()
+        self.logger.warning(f"{author.name} reloaded blacklist with values {self.black_list}")
+        return f"Blacklist loaded with values {self.black_list}"
+    
     
     async def whitelist(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
@@ -491,15 +613,9 @@ class GPTBot():
             self.write_whitelist()
             self.logger.warning(f"{author.name} whitelisted {name} with {value}")
             reply = f"{name} is now whitelisted with {value}"
+
         
         return reply
-    
-    async def reload_blacklist(self, message_object):
-        message, author, files = await self.unpackMessage(message_object)
-        
-        self.black_list = self.load_blacklist()
-        self.logger.warning(f"{author.name} reloaded blacklist with values {self.black_list}")
-        return f"Blacklist loaded with values {self.black_list}"
     
     async def reload_whitelist(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
@@ -507,6 +623,7 @@ class GPTBot():
         self.black_list = self.load_whitelist()
         self.logger.warning(f"{author.name} reloaded whitelist with values {self.white_list}")
         return f"Whitelist loaded with values {self.white_list}"
+   
     
     async def init_conv(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
@@ -523,33 +640,6 @@ class GPTBot():
         else:
             reply = "Too little information to initialize conversation"
         self.logger.info(reply)
-        return reply
-    
-    async def loadAuthor(self, message_object, id = None):
-        message, author, files = await self.unpackMessage(message_object)
-        reply = None
-        found_author = False
-        parts = message.split(" ")
-        if not id is None:
-            parts[1] = id
-        if len(parts) >= 2:
-            self.logger.warning(f"{author.name} requested to load author with ID {parts[1]}")
-            target_user = await self.bot.fetch_user(int(parts[1]))
-            if target_user == None:
-                reply = f"Loading author failed"
-            else:
-                for c in self.conversations:
-                    if c.user == target_user.name:
-                        c.author = target_user
-                        found_author = True
-                        break
-                if not found_author:
-                    reply = "Author not found/Conversation not found"
-                else: reply = "Author found and loaded"
-                
-        elif len(parts) < 2:
-            reply = "No ID provided"
-        self.logger.warning(reply)
         return reply
     
     async def del_conv(self, message_object):
@@ -575,7 +665,7 @@ class GPTBot():
                 reply = "Conversation does not exist"
         self.logger.info(reply)
         return reply
-    
+   
     async def del_specific_conv(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -658,6 +748,66 @@ class GPTBot():
             reply = "No conversations Found"
         self.logger.info(reply)
         return reply
+   
+    async def repeat_conv(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
+        reply = None
+        splits = message.split(" ")
+        name = author.name
+        if len(splits) >= 2:
+            name = splits[1]
+        for conv in self.conversations:
+            self.logger.warning(f"{author.name} asked to get the conversation.")
+            if conv.user == author.name:
+                replys = []
+                for c in conv.conversation:
+                    if c["role"] == "system":
+                        continue
+                    elif c["role"] == "user":
+                        replys.append(f"{name}: {c['content']}")
+                    else:
+                        replys.append(f"{self.bot_name}: {c['content']}")
+                for r in replys[:-1]:
+                    self.logger.info(r)
+                    await author.send(r)
+                    asyncio.sleep(1)
+                reply = replys[-1]
+                self.logger.info(reply)
+        if reply == "":
+            reply = "Found trailing data, report to Admin"
+            self.logger.error(reply)
+        if reply == None:
+            reply = "No conversation found"
+            self.logger.warning(reply)
+        return reply
+    
+    async def loadAuthor(self, message_object, id = None):
+        message, author, files = await self.unpackMessage(message_object)
+        reply = None
+        found_author = False
+        parts = message.split(" ")
+        if not id is None:
+            parts[1] = id
+        if len(parts) >= 2:
+            self.logger.warning(f"{author.name} requested to load author with ID {parts[1]}")
+            target_user = await self.bot.fetch_user(int(parts[1]))
+            if target_user == None:
+                reply = f"Loading author failed"
+            else:
+                for c in self.conversations:
+                    if c.user == target_user.name:
+                        c.author = target_user
+                        found_author = True
+                        break
+                if not found_author:
+                    reply = "Author not found/Conversation not found"
+                else: reply = "Author found and loaded"
+                
+        elif len(parts) < 2:
+            reply = "No ID provided"
+        self.logger.warning(reply)
+        return reply
+    
                     
     async def toggle_test_mode(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
@@ -710,6 +860,7 @@ class GPTBot():
         
     async def get_config(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
+  
         reply = None
         self.logger.warning(f"{author.name} requested settings")
         replys = []
@@ -729,54 +880,11 @@ class GPTBot():
         self.logger.info(reply)
         return reply
         
-    async def repeat_conv(self, message_object):
-        message, author, files = await self.unpackMessage(message_object)
-        reply = None
-        splits = message.split(" ")
-        name = author.name
-        if len(splits) >= 2:
-            name = splits[1]
-        for conv in self.conversations:
-            self.logger.warning(f"{author.name} asked to get the conversation.")
-            if conv.user == author.name:
-                replys = []
-                for c in conv.conversation:
-                    if c["role"] == "system":
-                        continue
-                    elif c["role"] == "user":
-                        replys.append(f"{name}: {c['content']}")
-                    else:
-                        replys.append(f"{self.bot_name}: {c['content']}")
-                for r in replys[:-1]:
-                    self.logger.info(r)
-                    await author.send(r)
-                    asyncio.sleep(1)
-                reply = replys[-1]
-                self.logger.info(reply)
-        if reply == "":
-            reply = "Found trailing data, report to Admin"
-            self.logger.error(reply)
-        if reply == None:
-            reply = "No conversation found"
-            self.logger.warning(reply)
-        return reply
-    
     async def clearMemory(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = f"{author.name} cleared memory"
         self.logger.warning(f"{author.name} cleared memory")
-        for c in self.conversations:
-            del self.conversations[self.conversations.index(c)]
-        return reply
-    
-    async def help(self, message_object):
-        message, author, files = await self.unpackMessage(message_object)
-        self.logger.warning(f"{author.name} asked for help.")
-        reply = "Available Commands: \n"
-        for command, value in self.commands.items():
-            if int(self.white_list[author.name]) >= value["perm"]:
-                reply += value["help"] + "\n"
-        self.logger.info(reply)
+        self.clcMem()
         return reply
     
     async def get_init_prompt(self, message_object):
@@ -878,7 +986,7 @@ class GPTBot():
                 reply = values[0]
             for c in self.conversations:
                 if c.user == name:
-                    await self.collectMessage(reply, c.author, "gpt")
+                    await self.collectMessage(reply, c.author, "gpt", files)
                     await c.author.send(reply, files=files)
                     return "Sending User defined Message"
         elif len(values) == 0:
@@ -947,13 +1055,29 @@ class GPTBot():
            
         self.tasks[name] = asyncio.create_task(self.gpt_sending(message.author, len(message.content)))
         await self.tasks[name]
-        
+    
+    async def fake_receipt(self, message_object):
+        message, author, files = await self.unpackMessage(message_object)
+        name, values = self.handleArgs(message)
+        user_id = values[0]
+        store_name = values[1]
+        amount = values[2]
+        target_user = await self.bot.fetch_user(user_id)
+        file = image_creation(store_name, amount)
+        self.logger.warning(f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}")
+        chat_reply = "Here is the PayPal receipt:"
+        await self.collectMessage(chat_reply, target_user, "gpt", [file])
+        await target_user.send(chat_reply, file=file)
+        return "Send faked receipt"
+
     async def gpt_sending(self,author, message_lenght):
         user = author.name
         if not self.test_mode:
-            await asyncio.sleep(random.randint(self.timer_duration ,self.timer_duration + message_lenght)) #wait for further messages
+            async with author.typing():
+                await asyncio.sleep(random.randint(self.timer_duration ,self.timer_duration + message_lenght)) #wait for further messages
         else: 
-            await asyncio.sleep(5)
+            async with author.typing():
+                await asyncio.sleep(5)
         for conversation in self.conversations:
             if conversation.user == user:
                 if not conversation.awaitingResponse():
@@ -981,27 +1105,22 @@ class GPTBot():
                 reply = response_message['content']
                 # Die Antwort an den Absender der DM zurückschicken
                 await self.collectMessage(reply,author ,"gpt")
-                await author.send(reply)
+                if self.debug:
+                    self.logger.info(f"Reply: {reply}")
+                else:
+                    await author.send(reply)
+                if len(self.tasks) > 0 and user in self.tasks.keys():
+                    for u,task in self.tasks.items():
+                        if u == user:
+                            if task is not None:
+                                task.cancel()
+                            del self.tasks[user]
+                if len(self.tasks) == 0:
+                    self.clcMem()
+                
         
-    def runBot(self):
-        intents = discord.Intents.default()
-        intents.messages = True
-        intents.guilds = True
-        bot = discord.Client(intents=intents) 
-        
-        self.bot = bot
-        
-        @bot.event
-        async def on_ready():
-            self.logger.passing(f"Logged in as {bot.user.name}, given name: {self.bot_name}")
-
-        @bot.event
-        async def on_message(message):
-            if isinstance(message.channel, discord.DMChannel) and message.author != bot.user:
-                await self.messageHandler(message)
-        bot.run(self.__bot_token)
-            
     
+#Not actually Used    
 def test_all(bot : GPTBot):
     l = Logger(True, False)
     message = discord.Message()
@@ -1044,6 +1163,6 @@ def test_all(bot : GPTBot):
             bot.runBot().on_message(message)
     
 if __name__ == '__main__':
-    bot = GPTBot(DISCORD_TOKEN_ALEX, OPENAI_API_KEY, "Alex", "Caesar", test_mode=True, admin_pw=ADMIN_PASSWORT)
+    bot = GPTBot(bot_token=DISCORD_TOKEN_ALEX, gpt_api_key=OPENAI_API_KEY, bot_name="Alex", channel_id=1129125304993067191,guild_id=877203185700339742, streamer_name="Caesar", test_mode=True, admin_pw=ADMIN_PASSWORT, debug=True)
     
     bot.runBot()
