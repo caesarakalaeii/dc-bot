@@ -133,7 +133,7 @@ class ConversationHandler():
                         except Exception as e:
                             print(f"Error saving media: {e}")
                             break
-                    i+=i
+                    i+=1
         
 
 class QueueItem():
@@ -408,7 +408,7 @@ class GPTBot():
             for m in files:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
-        await self.collectMessage(user_prompt, author, "user")
+        await self.collectMessage(user_prompt, author, "user", files)
         for conversation in self.conversations:
             if conversation.user == name:
                 conversation.appendUserMessage(user_prompt)
