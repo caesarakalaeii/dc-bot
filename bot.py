@@ -321,7 +321,7 @@ class GPTBot():
             },
             "!fake_receipt":{
                 "perm": 10,
-                "help": '!fake_receipt "user" "id" "amount" "store name": Fakes a PayPal receipt for the given Store name and Amount (Currently only in german)',
+                "help": '!fake_receipt "user" "id" "store name" "amount": Fakes a PayPal receipt for the given Store name and Amount (Currently only in german)',
                 "value_type": [str, int, str, int],
                 "func": self.fake_receipt
             }
@@ -1170,7 +1170,7 @@ class GPTBot():
         store_name = values[1]
         amount = values[2]
         target_user = await self.bot.fetch_user(user_id)
-        file = image_creation(store_name, amount)
+        file = image_creation(amount,store_name)
         self.logger.warning(f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}")
         chat_reply = "Here is the PayPal receipt:"
         await self.collectMessage(chat_reply, target_user, "gpt", [file])
