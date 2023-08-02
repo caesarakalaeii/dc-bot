@@ -30,7 +30,7 @@ FONT_TYPES = [('paypal_fonts/PayPalSansBig-Regular.woff', BOLD_LOCATIONS),
 
 def image_creation(amount, name):
     file_size = 0
-    while file_size == 0:
+    while file_size < 100:
         with Image.open(DEFAULT_IMAGE_PATH).convert("RGBA") as img:
             txt = Image.new("RGBA", img.size, (255, 255, 255, 0))
             d = ImageDraw.Draw(txt)
