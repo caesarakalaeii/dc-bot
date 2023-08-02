@@ -438,7 +438,7 @@ class GPTBot():
                 for m in messages:
                     message += f"\n{m}"
                 message_lenght = len(message)
-                age = time.time()-q.timestamp
+                age = int(time.time()-q.timestamp)
                 
                     
                 if not self.test_mode:
