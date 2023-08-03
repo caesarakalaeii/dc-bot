@@ -8,17 +8,17 @@ DEFAULT_IMAGE_PATH = "paypal_blank.png"
 
 MONTHS_GER = ['Januar', 'Februar', 'Marz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
-BOLD_LOCATIONS = [((83,34), 20, (0,  0, 0, 255), "name", "lb"),   #Name #1
+BOLD_LOCATIONS = [((83,36), 20, (0,  0, 0, 255), "name", "lb"),   #Name #1
                   ((984,38), 25, (0,  0, 0, 255), "amount", "rb"),  #Amount #1
-                  ((609, 349), 20, (16, 114, 235, 255), "name", "lb"),#Name Blue
-                  (( 982, 483), 25, (0,  0, 0, 255), "amount", "rb")  #Amount #4
+                  ((609, 350), 20, (16, 114, 235, 255), "name", "lb"),#Name Blue
+                  (( 982, 485), 25, (0,  0, 0, 255), "amount", "rb")  #Amount #4
                   ]
 
 LIGHT_LOCATIONS = [((82,58), 15, (0,  0, 0, 255), "date", "lb")] #Date
 
-NORMAL_LOCATIONS = [((982, 434), 25, (0,  0, 0, 255), "amount", "rb"),
-                    ((707,433), 20, (0,0,0,255), "name", "lb"),
-                    ((459,354), 25, (0,0,0,255), "amount", "rb")
+NORMAL_LOCATIONS = [((982, 436), 25, (0,  0, 0, 255), "amount", "rb"),
+                    ((707,436), 20, (0,0,0,255), "name", "lb"),
+                    ((459,356), 25, (0,0,0,255), "amount", "rb")
                     ]
 
 SMALL_LOCATIONS = []
