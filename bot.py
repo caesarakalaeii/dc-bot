@@ -620,30 +620,30 @@ class GPTBot():
         return name, values
         
     def load_blacklist(self):
-        if os.path.exists("blacklist.json"):
-            with open("blacklist.json", "r") as f:
+        if os.path.exists(f"blacklist_{self.bot_name}.json"):
+            with open(f"blacklist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else: 
             return []
     
     def write_blacklist(self):
-        if os.path.exists("blacklist.json"):
-            with open("blacklist.json", "w") as f:
+        if os.path.exists(f"blacklist_{self.bot_name}.json"):
+            with open(f"blacklist_{self.bot_name}.json", "w") as f:
                 f.write(json.dumps(self.black_list))
         else: 
             raise FileNotFoundError
        
     def load_whitelist(self):
-        if os.path.exists("whitelist.json"):
-            with open("whitelist.json", "r") as f:
+        if os.path.exists(f"whitelist_{self.bot_name}.json"):
+            with open(f"whitelist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else: 
             return []
         
     def write_whitelist(self):
     
-        if os.path.exists("whitelist.json"):
-            with open("whitelist.json", "w") as f:
+        if os.path.exists(f"whitelist_{self.bot_name}.json"):
+            with open(f"whitelist_{self.bot_name}.json", "w") as f:
                 f.write(json.dumps(self.white_list))
         else: 
             raise FileNotFoundError
@@ -654,14 +654,14 @@ class GPTBot():
         self.logger.error("Memory cleared") 
        
     def loadThreads(self):
-        if os.path.exists("threads.json"):
-            with open("threads.json", "r") as f:
+        if os.path.exists(f"threads_{self.bot_name}.json"):
+            with open(f"threads_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else: 
             return []
     
     def writeThreads(self):
-        with open("threads.json", "w") as f:
+        with open(f"threads_{self.bot_name}.json", "w") as f:
             f.write(json.dumps(self.threads))
       
     def runBot(self):
