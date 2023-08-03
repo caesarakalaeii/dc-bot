@@ -1,6 +1,6 @@
-#dc-bot  
-This is a bot that uses the GPT-3.5 model from OpenAI to respond to user messages in a conversational manner. Depending on the initial prompt it can be used to fake interactions with scammers, and provide faked PayPal receipts.     
-If You want to use it for this application, DM me on discord (@caesarlp) or here.  
+# dc-bot  
+This bot uses the GPT-3.5 model from OpenAI to respond to user messages in a conversational manner. Depending on the initial prompt it can be used to fake interactions with scammers and provide faked PayPal receipts.     
+If You want to use it for this application, DM me on Discord (@caesarlp) or here.  
 
 **Available Commands:**  
   
@@ -16,7 +16,7 @@ If You want to use it for this application, DM me on discord (@caesarlp) or here
 - `!toggle_test_prompt`: Toggles usage of a test prompt.  
 - `!get_init_prompt`: Returns the initial prompt of this conversation.  
 - `!command_help`: Returns all available commands.  
-- `!disable_commands passwort`: Disables all commands until restart (password required).  
+- `!disable_commands password`: Disables all commands until restart (password required).  
 - `!del_specific "user"`: Deletes the conversation log of a specific user from memory.  
 - `!shutdown`: Shuts down the bot.  
 - `!save_all`: Saves all ongoing conversations.  
@@ -24,18 +24,20 @@ If You want to use it for this application, DM me on discord (@caesarlp) or here
 - `!force_resend "name" ["message"]`: Tries to send the last message or a specified message.  
 - `!load_author user_id`: Tries to load an author by ID (load the conversation first!).  
 - `!clear_memory`: Clears conversations from memory.  
-- `!ban user_id`: Bans a user from interacting with the bot.  
+- `!ban user_id`: Bans users from interacting with the bot.  
 - `!unban user_id`: Unbans a user from interacting with the bot.  
 - `!whitelist "user" "value"`: Whitelists a user with a permission value (1-15).  
 - `!reload_whitelist`: Reloads the whitelist from disk.  
-- `!reload_blacklist`: Reloads the blacklist from disk.  
+- `!reload_blacklist`: Reloads the blacklist from the disk.  
 - `!init_conv "user" "id" "message"`: Initializes a conversation with a message to a user with ID.  
 - `!fake_receipt "user" "id" "store name" "amount"`: Fakes a PayPal receipt for a given store name and amount (currently only in German).  
 
-##TODO:  
+## TODO:  
 - Generate Fake receipts automatically.  
-- Fine tune init_prompt for better stability.   
-- Improve usability through accepting commands in Threads  
+- Fine-tune init_prompt for better stability.   
+- Improve usability by accepting commands in Threads  
+
+# Documentation:  
 
 ## ConversationHandler class    
   
