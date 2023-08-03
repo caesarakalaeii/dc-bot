@@ -386,8 +386,8 @@ class GPTBot():
                     for thread in self.threads:
                         if user in thread.keys():
                             await self.replyToThread(thread[user]["thread_id"], message, files, sender)
-                    conversation.updateGPT(message)
-                    conversation.writeConversation()
+                    newConv.updateGPT(message)
+                    newConv.writeConversation()
                     return
         newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
         newConv.updateUser(message)
