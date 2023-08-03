@@ -432,8 +432,7 @@ class GPTBot():
         author = q.message.author
         for conversation in self.conversations:
             if conversation.user == author.name:
-                if not conversation.awaitingResponse():
-                    return
+                
                 messages = [] #Kinda useless but also nice
                 message = ""
                 
@@ -467,7 +466,8 @@ class GPTBot():
                     messages = [old[0]]
                     for m in old[-20:]:
                         messages.append(m)
-                
+                if not conversation.awaitingResponse():
+                    return
                 response = openai.ChatCompletion.create(
                     model=self.MODEL_NAME,
                     messages= messages,
