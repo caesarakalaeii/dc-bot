@@ -469,29 +469,29 @@ class GPTBot():
                     messages = [old[0]]
                     for m in old[-20:]:
                         messages.append(m)
-                if not conversation.awaitingResponse():
-                    return
-                response = openai.ChatCompletion.create(
-                    model=self.MODEL_NAME,
-                    messages= messages,
-                    max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
-                    temperature=self.temperature,  # control over creativity
-                    n=1, # amount of answers
-                    top_p=1,
-                    frequency_penalty=0,
-                    presence_penalty=0  
-                )
+                if conversation.awaitingResponse():
+                    response = openai.ChatCompletion.create(
+                        model=self.MODEL_NAME,
+                        messages= messages,
+                        max_tokens=self.max_tokens,  # maximal amout of tokens, one token roughly equates to 4 chars
+                        temperature=self.temperature,  # control over creativity
+                        n=1, # amount of answers
+                        top_p=1,
+                        frequency_penalty=0,
+                        presence_penalty=0  
+                    )
 
-                # Die Antwort aus der response extrahieren
-                response_message = response['choices'][0]['message']
-                reply = response_message['content']
-                # Die Antwort an den Absender der DM zurückschicken
-                await self.collectMessage(reply,author ,"gpt")
-                if self.debug:
-                    self.logger.info(f"Reply: {reply}")
-                else:
-                    await author.send(reply)
-                self.queue.task_done()
+                    # Die Antwort aus der response extrahieren
+                    response_message = response['choices'][0]['message']
+                    reply = response_message['content']
+                    # Die Antwort an den Absender der DM zurückschicken
+                    await self.collectMessage(reply,author ,"gpt")
+                    if self.debug:
+                        self.logger.info(f"Reply: {reply}")
+                    else:
+                        await author.send(reply)
+                    self.queue.task_done()
+                return
        
     async def gpt_sending_user(self,author):
         user = author.name
