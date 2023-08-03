@@ -360,6 +360,7 @@ class GPTBot():
         
     async def collectMessage(self,message, author, sender, files = None):
         user = author.name
+        thread_id = None
         for conversation in self.conversations:
             if conversation.user == user:
                 if conversation.author == None:
@@ -386,14 +387,17 @@ class GPTBot():
                     self.logger.chatReply(user, self.bot_name, message)
                     for thread in self.threads:
                         if user in thread.keys():
-                            await self.replyToThread(thread[user]["thread_id"], message, files, sender)
+                            thread_id = thread[user]["thread_id"]
+                    if thread_id is None:       
+                        thread = await self.createThread(author)
+                        thread_id = thread.id
+                    await self.replyToThread(thread_id, message, files, author)
                     newConv.updateGPT(message)
                     newConv.writeConversation()
                     return
         newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
         newConv.updateUser(message)
         newConv.writeConversation()
-        thread_id = None
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
         for thread in self.threads:
