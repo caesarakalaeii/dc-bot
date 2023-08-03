@@ -354,6 +354,7 @@ class GPTBot():
         self.threads = self.loadThreads()
         self.tasks = {}   
         self.queue = asyncio.Queue()
+        
     
     '''Utility methods'''
         
@@ -422,6 +423,8 @@ class GPTBot():
         for conversation in self.conversations:
             if conversation.user == name:
                 conversation.appendUserMessage(user_prompt)
+                if not conversation.awaitingResponse():
+                    return
 
         await self.queue.put(QueueItem(message))
         await self.gpt_sending()
@@ -672,6 +675,7 @@ class GPTBot():
         @bot.event
         async def on_ready():
             self.logger.passing(f"Logged in as {bot.user.name}, given name: {self.bot_name}")
+            
 
         @bot.event
         async def on_message(message):
