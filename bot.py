@@ -628,30 +628,26 @@ class GPTBot():
             with open(f"blacklist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else: 
-            return []
+            self.logger.fail("Couldn't load Blacklist")
+            return {}
     
     def write_blacklist(self):
-        if os.path.exists(f"blacklist_{self.bot_name}.json"):
-            with open(f"blacklist_{self.bot_name}.json", "w") as f:
+        with open(f"blacklist_{self.bot_name}.json", "w") as f:
                 f.write(json.dumps(self.black_list))
-        else: 
-            raise FileNotFoundError
+        
        
     def load_whitelist(self):
         if os.path.exists(f"whitelist_{self.bot_name}.json"):
             with open(f"whitelist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else: 
-            return []
+            self.logger.fail("Couldn't load Whitelist")
+            return {}
         
     def write_whitelist(self):
-    
-        if os.path.exists(f"whitelist_{self.bot_name}.json"):
-            with open(f"whitelist_{self.bot_name}.json", "w") as f:
-                f.write(json.dumps(self.white_list))
-        else: 
-            raise FileNotFoundError
-      
+        with open(f"whitelist_{self.bot_name}.json", "w") as f:
+            f.write(json.dumps(self.white_list))
+
     def clcMem(self):
         for c in self.conversations:
             del self.conversations[self.conversations.index(c)]
