@@ -420,6 +420,7 @@ class GPTBot():
             for m in files:
                 filenames += m.filename +", "
             user_prompt = f"[{media_amount} amazing Media Attachements, namely:{filenames}]\n" + user_prompt
+        await self.handleThread(message, author)
         await self.collectMessage(user_prompt, author, "user", files)
         for conversation in self.conversations:
             if conversation.user == name:
