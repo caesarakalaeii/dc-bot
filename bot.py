@@ -357,6 +357,15 @@ class GPTBot():
         
     
     '''Utility methods'''
+    
+     
+    async def unpackMessage(self, message_object):
+        files = []
+        attachments = message_object.attachments
+        
+        for a in attachments:
+            files.append(await a.to_file())
+        return message_object.content, message_object.author, files
         
     async def handleThread(self, author):
         user = author.name
@@ -527,8 +536,7 @@ class GPTBot():
                     self.logger.info(f"Reply: {reply}")
                 else:
                     await author.send(reply)
-              
-        
+                      
     async def replyToThread(self, thread_id, message, files = None, sender = None):
         channel = self.bot.get_channel(self.channel_id)
         if channel:
@@ -632,8 +640,7 @@ class GPTBot():
     def write_blacklist(self):
         with open(f"blacklist_{self.bot_name}.json", "w") as f:
                 f.write(json.dumps(self.black_list))
-        
-       
+              
     def load_whitelist(self):
         if os.path.exists(f"whitelist_{self.bot_name}.json"):
             with open(f"whitelist_{self.bot_name}.json", "r") as f:
@@ -708,8 +715,7 @@ class GPTBot():
                 reply += value["help"] + "\n"
         self.logger.info(reply)
         return reply
-  
-    
+   
     async def ban(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -744,8 +750,7 @@ class GPTBot():
         self.black_list = self.load_blacklist()
         self.logger.warning(f"{author.name} reloaded blacklist with values {self.black_list}")
         return f"Blacklist loaded with values {self.black_list}"
-    
-    
+      
     async def whitelist(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -768,8 +773,7 @@ class GPTBot():
         self.black_list = self.load_whitelist()
         self.logger.warning(f"{author.name} reloaded whitelist with values {self.white_list}")
         return f"Whitelist loaded with values {self.white_list}"
-   
-    
+      
     async def init_conv(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -952,8 +956,7 @@ class GPTBot():
             reply = "No ID provided"
         self.logger.warning(reply)
         return reply
-    
-                    
+                     
     async def toggle_test_mode(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         reply = None
@@ -1166,15 +1169,7 @@ class GPTBot():
         reply = "Conversation not found."
         self.logger.warning(reply)
         return reply
-  
-    async def unpackMessage(self, message_object):
-        files = []
-        attachments = message_object.attachments
-        
-        for a in attachments:
-            files.append(await a.to_file())
-        return message_object.content, message_object.author, files
-    
+   
     async def fake_receipt(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         name, values = self.handleArgs(message)
@@ -1186,7 +1181,7 @@ class GPTBot():
         files = [file,]
         file_size=file.fp.__sizeof__()
         self.logger.warning(f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}, file_size: {file_size}")
-        chat_reply = "Here is the PayPal receipt:"
+        chat_reply = f"{self.streamer_name} shared the receipt with me, please check that the addressee ({store_name}) and the amount ({amount}.00$) are indeed correct:"
         await target_user.send(chat_reply, files=files)
         file = image_creation(amount,store_name)
         files = [file,]
