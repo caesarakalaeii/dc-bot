@@ -688,7 +688,7 @@ class GPTBot():
         if channel:
             name = author.name
             id  = author.id
-            thread = await channel.create_thread(name=f"{name} ({id})")
+            thread = await channel.create_thread(name=f"{name}", message= f"The start of a wonderful Conversation with {name} ({id})")
             self.threads.append({
                 name : {
                     "author_id":id,
