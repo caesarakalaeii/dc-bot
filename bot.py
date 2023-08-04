@@ -358,26 +358,34 @@ class GPTBot():
     
     '''Utility methods'''
         
+    async def handleThread(self, author):
+        user = author.name
+        thread_id= None
+        for thread in self.threads:
+            if user in thread.keys():
+                thread_id = thread[user]["thread_id"]
+            if thread_id is None:       
+                thread = await self.createThread(author)
+                thread_id = thread.id
+        return thread_id
+        
     async def collectMessage(self,message, author, sender, files = None):
         user = author.name
-        thread_id = None
         for conversation in self.conversations:
             if conversation.user == user:
                 if conversation.author == None:
-                    conversation.author == author
+                    conversation.author = author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
-                    for thread in self.threads:
-                        if user in thread.keys():
-                            await self.replyToThread(thread[user]["thread_id"], message, files, sender)
+                    thread_id = await self.handleThread(author)
+                    await self.replyToThread(thread_id, message, files, sender)
                     conversation.updateGPT(message)
                     conversation.writeConversation()
                     return
                 else:
                     self.logger.userReply(user, message)
-                    for thread in self.threads:
-                        if user in thread.keys():
-                            await self.replyToThread(thread[user]["thread_id"], message, files, author)
+                    thread_id = await self.handleThread(author)
+                    await self.replyToThread(thread_id, message, files, author)
                     conversation.updateUser(message)
                     conversation.writeConversation()
                     return
@@ -385,12 +393,7 @@ class GPTBot():
                     newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
                     self.conversations.append(newConv)
                     self.logger.chatReply(user, self.bot_name, message)
-                    for thread in self.threads:
-                        if user in thread.keys():
-                            thread_id = thread[user]["thread_id"]
-                    if thread_id is None:       
-                        thread = await self.createThread(author)
-                        thread_id = thread.id
+                    thread_id = await self.handleThread(author)
                     await self.replyToThread(thread_id, message, files, author)
                     newConv.updateGPT(message)
                     newConv.writeConversation()
@@ -400,12 +403,7 @@ class GPTBot():
         newConv.writeConversation()
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
-        for thread in self.threads:
-            if user in thread.keys():
-                thread_id = thread[user]["thread_id"]
-        if thread_id is None:       
-            thread = await self.createThread(author)
-            thread_id = thread.id
+        thread_id = await self.handleThread(author)
         await self.replyToThread(thread_id, message, files, author)
     
     async def messageHandler(self, message):
