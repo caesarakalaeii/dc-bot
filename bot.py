@@ -397,7 +397,6 @@ class GPTBot():
         await self.replyToThread(thread_id, message, files, author)
     
     async def handleThread(self, message_obj, author):
-        thread_id = None
         user = author.name
         for thread in self.threads:
             if user in thread.keys():
