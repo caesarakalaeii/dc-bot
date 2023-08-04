@@ -385,12 +385,6 @@ class GPTBot():
                     newConv = ConversationHandler(user, self.bot_name, init_prompt=self.init_prompt, author = author)
                     self.conversations.append(newConv)
                     self.logger.chatReply(user, self.bot_name, message)
-                    for thread in self.threads:
-                        if user in thread.keys():
-                            thread_id = thread[user]["thread_id"]
-                    if thread_id is None:       
-                        thread = await self.createThread(author)
-                        thread_id = thread.id
                     await self.replyToThread(thread_id, message, files, author)
                     newConv.updateGPT(message)
                     newConv.writeConversation()
@@ -400,13 +394,16 @@ class GPTBot():
         newConv.writeConversation()
         self.conversations.append(newConv)
         self.logger.userReply(user, message)
+        await self.replyToThread(thread_id, message, files, author)
+    
+    async def handleThread(self, message_obj, author):
+        user = author.name
         for thread in self.threads:
             if user in thread.keys():
                 thread_id = thread[user]["thread_id"]
         if thread_id is None:       
-            thread = await self.createThread(author)
+            thread = await self.createThread(author, message_obj)
             thread_id = thread.id
-        await self.replyToThread(thread_id, message, files, author)
     
     async def messageHandler(self, message):
         user_prompt, author, files = await self.unpackMessage(message)
@@ -529,6 +526,15 @@ class GPTBot():
                     self.logger.info(f"Reply: {reply}")
                 else:
                     await author.send(reply)
+    
+      
+    async def unpackMessage(self, message_object):
+        files = []
+        attachments = message_object.attachments
+        
+        for a in attachments:
+            files.append(await a.to_file())
+        return message_object.content, message_object.author, files
               
         
     async def replyToThread(self, thread_id, message, files = None, sender = None):
@@ -683,12 +689,12 @@ class GPTBot():
                 await self.messageHandler(message)
         bot.run(self.__bot_token)
         
-    async def createThread(self, author):
+    async def createThread(self, author, message_obj):
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             name = author.name
             id  = author.id
-            thread = await channel.create_thread(name=f"{name}", message= f"The start of a wonderful Conversation with {name} ({id})")
+            thread = await channel.create_thread(name=f"{name} ({id})", message= message_obj)
             self.threads.append({
                 name : {
                     "author_id":id,
@@ -784,6 +790,7 @@ class GPTBot():
             send = values[1]
             await self.resendMsg(message_object)
             reply = f"Initialized conversation with {name} with id {values[0]}.\nMessage is: {send}"
+            
         else:
             reply = "Too little information to initialize conversation"
         self.logger.info(reply)
@@ -1135,6 +1142,7 @@ class GPTBot():
                 if c.user == name:
                     await self.collectMessage(reply, c.author, "gpt", files)
                     await c.author.send(reply, files=files)
+                    await self.handleThread(message_object, c.author)
                     return "Sending User defined Message"
         elif len(values) == 0:
             fetch_last_message = True
@@ -1148,6 +1156,7 @@ class GPTBot():
                     last_conv = c.conversation[-1]
                     if last_conv["role"] == "user":
                         self.gpt_sending_user(c.author)
+                        await self.handleThread(message_object, c.author)
                         return "Requested new Message from GPT"
                     else:
                         reply = last_conv["content"]
@@ -1157,6 +1166,7 @@ class GPTBot():
                     self.logger.warning("Resending Message")
                     await self.collectMessage(reply, c.author, "user")
                     await c.author.send(reply)
+                    await self.handleThread(message_object, c.author)
                     for u,t in self.tasks.items():
                         t.cancel()
                     return "Resending Message"
@@ -1168,15 +1178,7 @@ class GPTBot():
         reply = "Conversation not found."
         self.logger.warning(reply)
         return reply
-  
-    async def unpackMessage(self, message_object):
-        files = []
-        attachments = message_object.attachments
-        
-        for a in attachments:
-            files.append(await a.to_file())
-        return message_object.content, message_object.author, files
-    
+
     async def fake_receipt(self, message_object):
         message, author, files = await self.unpackMessage(message_object)
         name, values = self.handleArgs(message)
@@ -1192,6 +1194,7 @@ class GPTBot():
         await target_user.send(chat_reply, files=files)
         file = image_creation(amount,store_name)
         files = [file,]
+        await self.handleThread(message_object, target_user)
         await self.collectMessage(chat_reply, target_user, "gpt", files=files)
         return "Send faked receipt"
 
