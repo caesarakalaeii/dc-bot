@@ -373,9 +373,9 @@ class GPTBot():
         for thread in self.threads:
             if user in thread.keys():
                 thread_id = thread[user]["thread_id"]
-            if thread_id is None:       
-                thread = await self.createThread(author)
-                thread_id = thread.id
+        if thread_id is None:       
+            thread = await self.createThread(author)
+            thread_id = thread.id
         return thread_id
         
     async def collectMessage(self,message, author, sender, files = None):
