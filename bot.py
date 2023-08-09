@@ -154,7 +154,7 @@ class GPTBot():
                  streamer_name = None, timer_duration = 300, art_styles = None, 
                  test_mode = False, temperature = 0.7, max_tokens = 256, 
                  use_test_prompt = False, commands_enabled = True, admin_pw = None,
-                 stream_link = None, debug = False):
+                 stream_link = None, debug = False, model = "gpt-3.5-turbo"):
         self.conversations = []
         self.channel_id = channel_id
         self.guild_id = guild_id
@@ -334,7 +334,7 @@ class GPTBot():
         if self.__admin_pw == None:
             self.logger.error("No admin password provided, you will not be able to disable commands!")
         openai.api_key = gpt_api_key
-        self.MODEL_NAME = "gpt-3.5-turbo"
+        self.MODEL_NAME = model
         self.use_test_prompt = use_test_prompt        
         self.streamer_name = streamer_name
         if art_styles == None:
