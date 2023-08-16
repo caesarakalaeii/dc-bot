@@ -500,7 +500,8 @@ class GPTBot():
                     if self.debug:
                         self.logger.info(f"Reply: {reply}")
                     else:
-                        await author.send(reply)
+                        if conversation.awaitingResponse():
+                            await author.send(reply)
                     self.queue.task_done()
                 return
        
