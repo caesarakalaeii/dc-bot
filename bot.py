@@ -496,11 +496,11 @@ class GPTBot():
                     response_message = response['choices'][0]['message']
                     reply = response_message['content']
                     # Die Antwort an den Absender der DM zurückschicken
-                    await self.collectMessage(reply,author ,"gpt")
-                    if self.debug:
-                        self.logger.info(f"Reply: {reply}")
-                    else:
-                        if conversation.awaitingResponse():
+                    if conversation.awaitingResponse():
+                        await self.collectMessage(reply,author ,"gpt")
+                        if self.debug:
+                            self.logger.info(f"Reply: {reply}")
+                        else:
                             await author.send(reply)
                     self.queue.task_done()
                 return
