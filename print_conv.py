@@ -6,8 +6,8 @@ from bot import ConversationHandler, GPTBot
 
 if __name__ == '__main__':
     
-    name = "freyacampbell"
-    number = 0
+    name = "miac17987"
+    number = None
     bot_name = "Alex"
     
     conversation = ConversationHandler.loadConversation(name, number, bot_name)

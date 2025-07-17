@@ -1,0 +1,45 @@
+name: Build and push Docker image
+
+on:
+  push:
+    branches: [ "prod", "dev" ]
+  pull_request:
+    branches: [ "prod", "dev" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Docker login
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List Files
+        run: ls -R
+
+      - name: Change RP URL
+        run: sed -i 's/{ENV}/${{ steps.extract_branch.outputs.branch }}/g' config/forcepack.toml
+
+      - name: Build Docker image
+        run: |
+          echo "${{ secrets.FORWARDING_SECRET }}" > ./forwarding.secret
+          docker build --build-arg FORWARDING_SECRET='${{ secrets.FORWARDING_SECRET }}' \
+          . -t ghcr.io/${{ github.repository }}/hans-proxy:${{ steps.extract_branch.outputs.branch }}
+
+      - name: Push Docker image
+        run: docker push ghcr.io/${{ github.repository }}/hans-proxy:${{ steps.extract_branch.outputs.branch }}

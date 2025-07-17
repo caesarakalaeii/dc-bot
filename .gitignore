@@ -1,12 +1,11 @@
 /api_secrets.py
 *log_*
-/prompt.py
 /test.txt
 /__pycache__
-/streamer_collection.py
 *conversations*
 *media*
 *whitelist*
 *blacklist*
 *threads*
 *full_convs*
+.idea
