@@ -9,7 +9,8 @@ ENV PYTHONUNBUFFERED=1
 # Copy and install Python dependencies
 COPY . .
 RUN pip install --no-cache-dir -r requirements.txt &&\
-    chown -R 65532:65532 /app
+    chown -R 65532:65532 /app &&\
+    chmod +x /app/run.sh
 
 USER 65532:65532
 
