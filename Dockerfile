@@ -12,9 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt &&\
     chown -R 65532:65532 /app
 
 USER 65532:65532
-# Copy the bot script
 
-# Use a shell form CMD to create the lists at runtime from env vars, then start the bot
-CMD echo "${WHITE_LIST}" > /app/whitelist_${BOT_NAME}.json && \
-    echo "${BLACK_LIST}" > /app/blacklist_${BOT_NAME}.json && \
-    python bot_start.py
+# Use run.sh as the entrypoint
+ENTRYPOINT ["./run.sh"]

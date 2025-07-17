@@ -30,13 +30,13 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
      -e COMMANDS_ENABLED=True \
      -e USE_TEST_PROMPT=False \
      -e TEST_MODE=False \
-     -e WHITE_LIST='{"caesarlp": "15"}' \
-     -e BLACK_LIST='[]' \
+     -e WHITE_LIST=$(echo -n '{"caesarlp": "15"}' | base64) \
+     -e BLACK_LIST=$(echo -n '[]' | base64) \
      dc-bot
    ```
 
 **Note:**
-- `WHITE_LIST` and `BLACK_LIST` should be valid JSON strings. They will be written to `whitelist_<BOT_NAME>.json` and `blacklist_<BOT_NAME>.json` at container startup.
+- `WHITE_LIST` and `BLACK_LIST` must be base64-encoded JSON strings. They will be decoded and written to `whitelist_<BOT_NAME>.json` and `blacklist_<BOT_NAME>.json` at container startup by `run.sh`.
 - All other configuration is handled via environment variables as shown above.
 
 ### Required Environment Variables
@@ -57,8 +57,8 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
 - `COMMANDS_ENABLED`: Enable/disable commands (default: True)
 - `USE_TEST_PROMPT`: Use test prompt (default: False)
 - `TEST_MODE`: Enable test mode (default: False)
-- `WHITE_LIST`: JSON string for whitelist (default: '{"caesarlp": "15"}')
-- `BLACK_LIST`: JSON string for blacklist (default: '[]')
+- `WHITE_LIST`: **Base64-encoded** JSON string for whitelist (default: base64 of '{"caesarlp": "15"}')
+- `BLACK_LIST`: **Base64-encoded** JSON string for blacklist (default: base64 of '[]')
 
 ---
 
