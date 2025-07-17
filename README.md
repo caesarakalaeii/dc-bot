@@ -2,6 +2,66 @@
 This bot uses the GPT-3.5 model from OpenAI to respond to user messages in a conversational manner. Depending on the initial prompt it can be used to fake interactions with scammers and provide faked PayPal receipts.     
 If You want to use it for this application, DM me on Discord (@caesarlp) or here.  
 
+## Docker Usage & Configuration
+
+This bot is fully dockerized and can be run using Docker. All configuration is handled through environment variables.
+
+### Build and Run with Docker
+
+1. **Build the Docker image:**
+   ```sh
+   docker build -t dc-bot .
+   ```
+2. **Run the container:**
+   ```sh
+   docker run -d \
+     -e DISCORD_TOKEN=your_discord_token \
+     -e OPENAI_API_KEY=your_openai_api_key \
+     -e BOT_NAME=Alex \
+     -e CHANNEL_ID=your_channel_id \
+     -e GUILD_ID=your_guild_id \
+     -e STREAMER_NAME=your_streamer_name \
+     -e ADMIN_PASSWORD=your_admin_password \
+     -e ART_STYLES="style1,style2" \
+     -e STREAM_LINK=your_stream_link \
+     -e TEMPERATURE=0.7 \
+     -e MAX_TOKENS=256 \
+     -e TIMER_DURATION=300 \
+     -e COMMANDS_ENABLED=True \
+     -e USE_TEST_PROMPT=False \
+     -e TEST_MODE=False \
+     -e WHITE_LIST='{"caesarlp": "15"}' \
+     -e BLACK_LIST='[]' \
+     dc-bot
+   ```
+
+**Note:**
+- `WHITE_LIST` and `BLACK_LIST` should be valid JSON strings. They will be written to `whitelist_<BOT_NAME>.json` and `blacklist_<BOT_NAME>.json` at container startup.
+- All other configuration is handled via environment variables as shown above.
+
+### Required Environment Variables
+- `DISCORD_TOKEN`: Your Discord bot token
+- `OPENAI_API_KEY`: Your OpenAI API key
+- `BOT_NAME`: The bot's name (default: Alex)
+- `CHANNEL_ID`: The Discord channel ID
+- `GUILD_ID`: The Discord guild/server ID
+- `STREAMER_NAME`: The streamer's name
+- `ADMIN_PASSWORD`: Password for admin commands
+
+### Optional Environment Variables
+- `ART_STYLES`: Comma-separated list of art styles
+- `STREAM_LINK`: Link to the stream
+- `TEMPERATURE`: OpenAI model temperature (default: 0.7)
+- `MAX_TOKENS`: Max tokens for OpenAI responses (default: 256)
+- `TIMER_DURATION`: Minimum reply delay in seconds (default: 300)
+- `COMMANDS_ENABLED`: Enable/disable commands (default: True)
+- `USE_TEST_PROMPT`: Use test prompt (default: False)
+- `TEST_MODE`: Enable test mode (default: False)
+- `WHITE_LIST`: JSON string for whitelist (default: '{"caesarlp": "15"}')
+- `BLACK_LIST`: JSON string for blacklist (default: '[]')
+
+---
+
 **Available Commands:**  
   
 - `!delete_conv`: Deletes the conversation from bot memory.  
@@ -93,4 +153,4 @@ If You want to use it for this application, DM me on Discord (@caesarlp) or here
 - *init_prompt* (str): The initial prompt for the conversation.  
 - *author* (discord.Author): The author of the conversation.  
 - *base_prompt* (dict): The base prompt for the conversation.  
-- *conversation* (list): The list representing the conversation history.  
+- *conversation* (list): The list representing the conversation history.
