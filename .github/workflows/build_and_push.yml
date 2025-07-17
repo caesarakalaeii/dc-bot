@@ -2,9 +2,7 @@ name: Build and push Docker image
 
 on:
   push:
-    branches: [ "prod", "dev" ]
-  pull_request:
-    branches: [ "prod", "dev" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -29,17 +27,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: List Files
-        run: ls -R
-
-      - name: Change RP URL
-        run: sed -i 's/{ENV}/${{ steps.extract_branch.outputs.branch }}/g' config/forcepack.toml
 
       - name: Build Docker image
         run: |
-          echo "${{ secrets.FORWARDING_SECRET }}" > ./forwarding.secret
-          docker build --build-arg FORWARDING_SECRET='${{ secrets.FORWARDING_SECRET }}' \
-          . -t ghcr.io/${{ github.repository }}/hans-proxy:${{ steps.extract_branch.outputs.branch }}
+          docker build . -t ghcr.io/${{ github.repository }}/alex:${{ steps.extract_branch.outputs.branch }}
 
       - name: Push Docker image
-        run: docker push ghcr.io/${{ github.repository }}/hans-proxy:${{ steps.extract_branch.outputs.branch }}
+        run: docker push ghcr.io/${{ github.repository }}/alex:${{ steps.extract_branch.outputs.branch }}
