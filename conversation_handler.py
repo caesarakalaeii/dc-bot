@@ -9,7 +9,7 @@ class ConversationHandler:
     ):
         self.user = user
         self.bot_name = bot_name
-        self.dir_path = f"{self.bot_name}_conversations"
+        self.dir_path = f"persistence/{self.bot_name}_conversations"
         self.file_path = os.path.join(self.dir_path, f"{self.user}.json")
         self.init_prompt = init_prompt
         self.author = author

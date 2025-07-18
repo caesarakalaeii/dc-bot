@@ -5,11 +5,11 @@ import requests
 
 
 def list_conversations(bot_name: str):
-    return os.listdir(f"{bot_name}_conversations")
+    return os.listdir(f"persistence/{bot_name}_conversations")
 
 
 def load_conversation(name: str, number: int | None, bot_name):
-    dir_path = f"{bot_name}_conversations"
+    dir_path = f"persistence/{bot_name}_conversations"
     if number is None:
         if os.path.exists(os.path.join(dir_path, f"{name}.json")):
             with open(os.path.join(dir_path, f"{name}.json"), "r") as f:
@@ -25,7 +25,7 @@ def load_conversation(name: str, number: int | None, bot_name):
 
 
 def save_media(name: str, medias):
-    dir_path = f"{name}_media"
+    dir_path = f"persistence/media/{name}_media"
     try:
         os.makedirs(dir_path, exist_ok=True)  # Create directory if it doesn't exist
     except OSError as e:
@@ -105,3 +105,15 @@ def handle_args(message: str):
             name += s.replace('"', "")
 
     return name, values
+
+
+def ensure_persistence_dir_exists(subfolder=None):
+    if subfolder:
+        dir_path = os.path.join("persistence", subfolder)
+    else:
+        dir_path = "persistence"
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+        print(f"Created {dir_path} directory.")
+    else:
+        print(f"{dir_path} directory already exists.")

@@ -18,6 +18,7 @@ from utils import (
     load_conversation,
     list_conversations,
     unpack_message,
+    ensure_persistence_dir_exists,
 )
 
 
@@ -29,6 +30,8 @@ class GPTBot:
         self,
         bot_config: dict,
     ):
+        ensure_persistence_dir_exists()
+        ensure_persistence_dir_exists("media")
         self.conversations = []
         self.channel_id = int(bot_config["channel_id"])
         self.guild_id = int(bot_config["guild_id"])
@@ -558,27 +561,27 @@ class GPTBot:
         return False
 
     def load_blacklist(self):
-        if os.path.exists(f"blacklist_{self.bot_name}.json"):
-            with open(f"blacklist_{self.bot_name}.json", "r") as f:
+        if os.path.exists(f"persistence/blacklist_{self.bot_name}.json"):
+            with open(f"persistence/blacklist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else:
             self.logger.fail("Couldn't load Blacklist")
             return {}
 
     def write_blacklist(self):
-        with open(f"blacklist_{self.bot_name}.json", "w") as f:
+        with open(f"persistence/blacklist_{self.bot_name}.json", "w") as f:
             f.write(json.dumps(self.black_list))
 
     def load_whitelist(self):
-        if os.path.exists(f"whitelist_{self.bot_name}.json"):
-            with open(f"whitelist_{self.bot_name}.json", "r") as f:
+        if os.path.exists(f"persistence/whitelist_{self.bot_name}.json"):
+            with open(f"persistence/whitelist_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else:
             self.logger.fail("Couldn't load Whitelist")
             return {}
 
     def write_whitelist(self):
-        with open(f"whitelist_{self.bot_name}.json", "w") as f:
+        with open(f"persistence/whitelist_{self.bot_name}.json", "w") as f:
             f.write(json.dumps(self.white_list))
 
     def clc_mem(self):
@@ -587,14 +590,14 @@ class GPTBot:
         self.logger.error("Memory cleared")
 
     def load_threads(self):
-        if os.path.exists(f"threads_{self.bot_name}.json"):
-            with open(f"threads_{self.bot_name}.json", "r") as f:
+        if os.path.exists(f"persistence/threads_{self.bot_name}.json"):
+            with open(f"persistence/threads_{self.bot_name}.json", "r") as f:
                 return json.loads(f.read())
         else:
             return []
 
     def write_threads(self):
-        with open(f"threads_{self.bot_name}.json", "w") as f:
+        with open(f"persistence/threads_{self.bot_name}.json", "w") as f:
             f.write(json.dumps(self.threads))
 
     def run_bot(self):
