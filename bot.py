@@ -427,8 +427,6 @@ class GPTBot:
                     if conversation.awaiting_response():
                         # if the conversation is awaiting a response, we can send the reply to the thread
                         await self.collect_message(reply, author, "gpt")
-
-                    if conversation.awaiting_response():
                         # send reply to user
                         if self.debug:
                             self.logger.info(f"Reply: {reply}")
