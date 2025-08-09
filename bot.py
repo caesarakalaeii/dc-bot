@@ -431,6 +431,7 @@ class GPTBot:
                         if self.debug:
                             self.logger.info(f"Reply: {reply}")
                         else:
+                            self.logger.info("Sending Message to User")
                             await author.send(reply)
                     self.queue.task_done()
                 return
