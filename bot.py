@@ -202,6 +202,24 @@ class GPTBot:
                 "value_type": [str, int, str, int],
                 "func": self.fake_receipt,
             },
+            "!toggle_auto_welcome": {
+                "perm": 15,
+                "help": "!toggle_auto_welcome: Toggles automatic welcome messages for new members",
+                "value_type": None,
+                "func": self.toggle_auto_welcome,
+            },
+            "!reload_welcomed_users": {
+                "perm": 15,
+                "help": "!reload_welcomed_users: Reloads welcomed users list from disk",
+                "value_type": None,
+                "func": self.reload_welcomed_users,
+            },
+            "!check_welcome_status": {
+                "perm": 10,
+                "help": "!check_welcome_status: Shows auto-welcome status and statistics",
+                "value_type": None,
+                "func": self.check_welcome_status,
+            },
         }
         self.tools = [
             {
@@ -263,8 +281,28 @@ class GPTBot:
         self.threads = self.load_threads()
         self.tasks = {}
         self.queue = asyncio.Queue()
+        # Auto-welcome configuration
+        self.auto_welcome_enabled = bot_config.get("auto_welcome_enabled", False)
+        self.welcomed_users = self.load_welcomed_users()
+        self.welcome_tasks = {}  # Track pending welcome tasks
+        self.welcome_template = self.get_welcome_template()
+        # Webhook configuration for thread impersonation
+        self.webhook_cache = {}  # Dictionary: thread_id -> webhook object
 
     """Utility methods"""
+
+    def get_welcome_template(self):
+        """
+        Returns the welcome message template.
+        Placeholders: {user_name}, {bot_name}, {streamer_name}
+        """
+        return (
+            f"Hey {{user_name}}! Welcome to the community!\n\n"
+            f"I'm {{bot_name}}, {{streamer_name}}'s assistant. I'm here to help you with "
+            f"anything you might need - whether it's questions about the stream, art commissions, "
+            f"or just a friendly chat.\n\n"
+            f"What can I help you with today?"
+        )
 
     async def handle_thread(self, author):
         user = author.name
@@ -490,7 +528,81 @@ class GPTBot:
                 else:
                     await author.send(reply)
 
+    async def send_welcome_message(self, member):
+        """
+        Send a welcome DM to a new member after a random delay.
+        Creates a conversation record and initiates contact.
+
+        Args:
+            member: discord.Member object of the user who joined
+        """
+        try:
+            # Random delay between 5-10 minutes (300-600 seconds)
+            delay = random.randint(300, 600)
+            self.logger.info(
+                f"Scheduling welcome message for {member.name} ({member.id}) in {delay} seconds"
+            )
+
+            await asyncio.sleep(delay)
+
+            # Check if user is still in the guild
+            guild = self.bot.get_guild(self.guild_id)
+            if guild:
+                try:
+                    # Refresh member object to ensure they're still in guild
+                    member = await guild.fetch_member(member.id)
+                except discord.NotFound:
+                    self.logger.info(
+                        f"User {member.name} ({member.id}) left before welcome message could be sent"
+                    )
+                    return
+
+            # Format welcome message with placeholders
+            welcome_message = self.welcome_template.format(
+                user_name=member.name,
+                bot_name=self.bot_name,
+                streamer_name=self.streamer_name,
+            )
+
+            # Send DM
+            try:
+                await member.send(welcome_message)
+                self.logger.passing(
+                    f"Welcome message sent to {member.name} ({member.id})"
+                )
+
+                # Create conversation record (bot initiates, so it's a "gpt" message)
+                await self.collect_message(welcome_message, member, "gpt")
+
+                # Mark user as welcomed
+                self.add_welcomed_user(member.id)
+
+            except discord.Forbidden:
+                self.logger.warning(
+                    f"Cannot send DM to {member.name} ({member.id}) - user has DMs disabled"
+                )
+                # Still mark as welcomed to avoid retry spam
+                self.add_welcomed_user(member.id)
+
+            except discord.HTTPException as e:
+                self.logger.error(
+                    f"HTTP error sending welcome to {member.name} ({member.id}): {e}"
+                )
+
+        except asyncio.CancelledError:
+            self.logger.info(f"Welcome task cancelled for {member.name} ({member.id})")
+            raise
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error in send_welcome_message for {member.name}: {e}"
+            )
+        finally:
+            # Clean up task reference
+            if member.id in self.welcome_tasks:
+                del self.welcome_tasks[member.id]
+
     async def reply_to_thread(self, thread_id, message, files=None, sender=None):
+        """Send message to thread, using webhooks for user impersonation."""
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             thread = None
@@ -500,20 +612,88 @@ class GPTBot:
                     break
 
             if thread:
+                len_files = len(files) if files else 0
+
                 if sender == "gpt":
-                    reply = f"{self.bot_name} replies: {message}"
+                    # Bot messages: use normal send (bot's real profile)
+                    reply = message  # No prefix needed
+                    self.logger.passing(f'Bot reply: "{reply}" with {len_files} files')
+                    await thread.send(reply, files=files)
                 else:
-                    reply = f"{sender.name} says: {message}"
-                if files is None:
-                    len_files = 0
-                else:
-                    len_files = len(files)
-                self.logger.passing(f'Send reply: "{reply}" with {len_files} files')
-                await thread.send(reply, files=files)
+                    # User messages: use webhook for impersonation
+                    username = sender.name
+                    avatar_url = (
+                        sender.avatar.url if sender.avatar else sender.default_avatar.url
+                    )
+
+                    self.logger.passing(
+                        f'User message via webhook: "{message}" from {username} with {len_files} files'
+                    )
+
+                    # Try webhook, fallback to old format if it fails
+                    await self.send_via_webhook(
+                        thread=thread,
+                        message=message,
+                        username=username,
+                        avatar_url=avatar_url,
+                        files=files,
+                    )
             else:
                 self.logger.warning(
                     f"Thread with {thread_id} not found in channel {self.channel_id} of guild {self.guild_id}."
                 )
+
+    async def get_or_create_webhook(self, thread):
+        """Get cached webhook for thread or create new one."""
+        if thread.id in self.webhook_cache:
+            # Return cached webhook
+            return self.webhook_cache[thread.id]
+
+        try:
+            # Create new webhook for this thread
+            webhook = await thread.create_webhook(
+                name=f"relay_{thread.id}",
+                reason="Message relay for conversation tracking",
+            )
+            self.webhook_cache[thread.id] = webhook
+            self.logger.info(f"Created webhook for thread {thread.id}")
+            return webhook
+        except discord.Forbidden:
+            self.logger.error(
+                f"Missing manage_webhooks permission for thread {thread.id}"
+            )
+            return None
+        except discord.HTTPException as e:
+            self.logger.error(f"Failed to create webhook for thread {thread.id}: {e}")
+            return None
+
+    async def send_via_webhook(self, thread, message, username, avatar_url, files=None):
+        """Send message via webhook with custom username and avatar."""
+        webhook = await self.get_or_create_webhook(thread)
+
+        if webhook is None:
+            # Fallback to old format if webhook creation failed
+            self.logger.warning(f"Webhook unavailable, using fallback format")
+            fallback_message = f"{username} says: {message}"
+            await thread.send(fallback_message, files=files)
+            return False
+
+        try:
+            await webhook.send(
+                content=message,
+                username=username,
+                avatar_url=avatar_url,
+                files=files,
+                wait=True,
+            )
+            self.logger.info(f"Sent message via webhook as {username}")
+            return True
+        except discord.HTTPException as e:
+            self.logger.error(f"Webhook send failed: {e}, using fallback")
+            # Fallback to old format
+            fallback_message = f"{username} says: {message}"
+            await thread.send(fallback_message, files=files)
+            return False
 
     async def check_command(self, message_object):
         message, author, _ = await unpack_message(message_object)
@@ -599,10 +779,37 @@ class GPTBot:
         with open(f"persistence/threads_{self.bot_name}.json", "w") as f:
             f.write(json.dumps(self.threads))
 
+    def load_welcomed_users(self):
+        """Load list of user IDs who have been welcomed."""
+        file_path = f"persistence/welcomed_users_{self.bot_name}.json"
+        if os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                return json.loads(f.read())
+        else:
+            self.logger.info("No welcomed users file found, creating new one")
+            return []
+
+    def write_welcomed_users(self):
+        """Persist the list of welcomed users to disk."""
+        file_path = f"persistence/welcomed_users_{self.bot_name}.json"
+        with open(file_path, "w") as f:
+            f.write(json.dumps(self.welcomed_users))
+        self.logger.info(
+            f"Welcomed users list saved with {len(self.welcomed_users)} entries"
+        )
+
+    def add_welcomed_user(self, user_id: int):
+        """Add a user ID to the welcomed users list."""
+        if user_id not in self.welcomed_users:
+            self.welcomed_users.append(user_id)
+            self.write_welcomed_users()
+            self.logger.info(f"Added user {user_id} to welcomed users list")
+
     def run_bot(self):
         intents = discord.Intents.default()
         intents.messages = True
         intents.guilds = True
+        intents.members = True  # Required for on_member_join event
         self.bot = discord.Client(intents=intents)
 
         @self.bot.event
@@ -618,6 +825,51 @@ class GPTBot:
                 and message.author != self.bot.user
             ):
                 await self.message_handler(message)
+
+        @self.bot.event
+        async def on_member_join(member):
+            """
+            Triggered when a user joins the guild specified by GUILD_ID.
+            Schedules a welcome message if auto-welcome is enabled.
+            """
+            # Only handle joins for the target guild
+            if member.guild.id != self.guild_id:
+                self.logger.info(
+                    f"Ignoring join from non-target guild: {member.guild.name} (ID: {member.guild.id})"
+                )
+                return
+
+            self.logger.info(
+                f"New member joined: {member.name} ({member.id}) in guild {member.guild.name}"
+            )
+
+            # Check if auto-welcome is enabled
+            if not self.auto_welcome_enabled:
+                self.logger.info(
+                    f"Auto-welcome disabled, skipping welcome for {member.name}"
+                )
+                return
+
+            # Check if user has already been welcomed
+            if member.id in self.welcomed_users:
+                self.logger.info(
+                    f"User {member.name} ({member.id}) already welcomed, skipping"
+                )
+                return
+
+            # Check if user is a bot
+            if member.bot:
+                self.logger.info(
+                    f"User {member.name} ({member.id}) is a bot, skipping welcome"
+                )
+                return
+
+            # Schedule welcome message
+            task = asyncio.create_task(self.send_welcome_message(member))
+            self.welcome_tasks[member.id] = task
+            self.logger.passing(
+                f"Welcome task created for {member.name} ({member.id})"
+            )
 
         self.bot.run(self.__bot_token)
 
@@ -1028,6 +1280,19 @@ class GPTBot:
         _, author, _ = await unpack_message(message_object)
         self.logger.error(f"{author.name} initiated shutdown, saving conversations.")
         await self.save_all(message_object)
+
+        # Cancel all pending welcome tasks
+        if self.welcome_tasks:
+            self.logger.info(f"Cancelling {len(self.welcome_tasks)} pending welcome tasks")
+            for user_id, task in self.welcome_tasks.items():
+                task.cancel()
+            self.logger.info("All welcome tasks cancelled")
+
+        # Clear webhook cache
+        if self.webhook_cache:
+            self.logger.info(f"Clearing {len(self.webhook_cache)} cached webhooks")
+            self.webhook_cache.clear()
+
         self.logger.error("Saved conversations.\nShutting down.")
 
         exit()
@@ -1140,3 +1405,63 @@ class GPTBot:
         ]
         await self.collect_message(chat_reply, target_user, "gpt", files=files)
         return "Send faked receipt"
+
+    async def toggle_auto_welcome(self, message_object):
+        """Toggle the auto-welcome feature on/off."""
+        _, author, _ = await unpack_message(message_object)
+
+        self.auto_welcome_enabled = not self.auto_welcome_enabled
+
+        self.logger.warning(
+            f"{author.name} toggled auto_welcome to {self.auto_welcome_enabled}"
+        )
+
+        reply = f"Auto-welcome is now: {'ENABLED' if self.auto_welcome_enabled else 'DISABLED'}"
+
+        # Cancel all pending welcome tasks if disabling
+        if not self.auto_welcome_enabled and self.welcome_tasks:
+            cancelled_count = 0
+            for user_id, task in list(self.welcome_tasks.items()):
+                task.cancel()
+                cancelled_count += 1
+            reply += f"\nCancelled {cancelled_count} pending welcome tasks."
+            self.logger.info(f"Cancelled {cancelled_count} pending welcome tasks")
+
+        self.logger.info(reply)
+        return reply
+
+    async def reload_welcomed_users(self, message_object):
+        """Reload the welcomed users list from disk."""
+        _, author, _ = await unpack_message(message_object)
+
+        self.welcomed_users = self.load_welcomed_users()
+
+        self.logger.warning(
+            f"{author.name} reloaded welcomed users list with {len(self.welcomed_users)} entries"
+        )
+
+        return f"Welcomed users list reloaded with {len(self.welcomed_users)} entries"
+
+    async def check_welcome_status(self, message_object):
+        """Return current auto-welcome status and statistics."""
+        _, author, _ = await unpack_message(message_object)
+
+        self.logger.info(f"{author.name} requested welcome status")
+
+        status = "ENABLED" if self.auto_welcome_enabled else "DISABLED"
+        welcomed_count = len(self.welcomed_users)
+        pending_count = len(self.welcome_tasks)
+
+        reply = (
+            f"Auto-Welcome Status: {status}\n"
+            f"Total users welcomed: {welcomed_count}\n"
+            f"Pending welcome tasks: {pending_count}"
+        )
+
+        if pending_count > 0:
+            reply += "\n\nPending welcomes:"
+            for user_id in self.welcome_tasks.keys():
+                reply += f"\n- User ID: {user_id}"
+
+        self.logger.info(reply)
+        return reply

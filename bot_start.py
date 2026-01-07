@@ -30,6 +30,8 @@ if __name__ == "__main__":
         "model": os.getenv("MODEL", "gpt-3.5-turbo"),
         "use_test_prompt": os.getenv("USE_TEST_PROMPT", "False").lower()
         in ("true", "1", "t"),
+        "auto_welcome_enabled": os.getenv("AUTO_WELCOME_ENABLED", "False").lower()
+        in ("true", "1", "t"),
     }
     print("Initializing config:")
     for k, v in config.items():

@@ -57,6 +57,7 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
 - `COMMANDS_ENABLED`: Enable/disable commands (default: True)
 - `USE_TEST_PROMPT`: Use test prompt (default: False)
 - `TEST_MODE`: Enable test mode (default: False)
+- `AUTO_WELCOME_ENABLED`: Enable automatic welcome DMs for new members (default: False)
 - `WHITE_LIST`: **Base64-encoded** JSON string for whitelist (default: base64 of '{"caesarlp": "15"}')
 - `BLACK_LIST`: **Base64-encoded** JSON string for blacklist (default: base64 of '[]')
 
@@ -89,8 +90,11 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
 - `!whitelist "user" "value"`: Whitelists a user with a permission value (1-15).  
 - `!reload_whitelist`: Reloads the whitelist from disk.  
 - `!reload_blacklist`: Reloads the blacklist from the disk.  
-- `!init_conv "user" "id" "message"`: Initializes a conversation with a message to a user with ID.  
-- `!fake_receipt "user" "id" "store name" "amount"`: Fakes a PayPal receipt for a given store name and amount (currently only in German).  
+- `!init_conv "user" "id" "message"`: Initializes a conversation with a message to a user with ID.
+- `!fake_receipt "user" "id" "store name" "amount"`: Fakes a PayPal receipt for a given store name and amount (currently only in German).
+- `!toggle_auto_welcome`: Toggles automatic welcome messages for new members.
+- `!reload_welcomed_users`: Reloads welcomed users list from disk.
+- `!check_welcome_status`: Shows auto-welcome status and statistics.
 
 ## TODO:  
 - Generate Fake receipts automatically.  

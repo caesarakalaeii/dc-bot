@@ -2,3 +2,4 @@ discord.py
 openai
 requests
 pillow
+aiohttp
