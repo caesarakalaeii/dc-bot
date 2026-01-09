@@ -650,17 +650,23 @@ class GPTBot:
             return self.webhook_cache[thread.id]
 
         try:
-            # Create new webhook for this thread
-            webhook = await thread.create_webhook(
+            # Webhooks must be created on the parent channel, not the thread
+            parent_channel = thread.parent
+            if parent_channel is None:
+                self.logger.error(f"Thread {thread.id} has no parent channel")
+                return None
+
+            # Create new webhook on the parent channel
+            webhook = await parent_channel.create_webhook(
                 name=f"relay_{thread.id}",
                 reason="Message relay for conversation tracking",
             )
             self.webhook_cache[thread.id] = webhook
-            self.logger.info(f"Created webhook for thread {thread.id}")
+            self.logger.info(f"Created webhook for thread {thread.id} on parent channel {parent_channel.id}")
             return webhook
         except discord.Forbidden:
             self.logger.error(
-                f"Missing manage_webhooks permission for thread {thread.id}"
+                f"Missing manage_webhooks permission for parent channel of thread {thread.id}"
             )
             return None
         except discord.HTTPException as e:
@@ -684,9 +690,10 @@ class GPTBot:
                 username=username,
                 avatar_url=avatar_url,
                 files=files,
+                thread=thread,
                 wait=True,
             )
-            self.logger.info(f"Sent message via webhook as {username}")
+            self.logger.info(f"Sent message via webhook as {username} to thread {thread.id}")
             return True
         except discord.HTTPException as e:
             self.logger.error(f"Webhook send failed: {e}, using fallback")
