@@ -283,6 +283,9 @@ class GPTBot:
         self.queue = asyncio.Queue()
         # Auto-welcome configuration
         self.auto_welcome_enabled = bot_config.get("auto_welcome_enabled", False)
+        # Auto-welcome guild ID (separate from logging guild, defaults to main guild if not specified)
+        auto_welcome_guild_str = bot_config.get("auto_welcome_guild_id", None)
+        self.auto_welcome_guild_id = int(auto_welcome_guild_str) if auto_welcome_guild_str else self.guild_id
         self.welcomed_users = self.load_welcomed_users()
         self.welcome_tasks = {}  # Track pending welcome tasks
         self.welcome_template = self.get_welcome_template()
@@ -836,11 +839,11 @@ class GPTBot:
         @self.bot.event
         async def on_member_join(member):
             """
-            Triggered when a user joins the guild specified by GUILD_ID.
+            Triggered when a user joins the guild specified by AUTO_WELCOME_GUILD_ID.
             Schedules a welcome message if auto-welcome is enabled.
             """
-            # Only handle joins for the target guild
-            if member.guild.id != self.guild_id:
+            # Only handle joins for the auto-welcome target guild
+            if member.guild.id != self.auto_welcome_guild_id:
                 self.logger.info(
                     f"Ignoring join from non-target guild: {member.guild.name} (ID: {member.guild.id})"
                 )

@@ -27,11 +27,12 @@ if __name__ == "__main__":
         "commands_enabled": os.getenv("COMMANDS_ENABLED", "True").lower()
         in ("true", "1", "t"),
         "stream_link": os.getenv("STREAM_LINK", None),
-        "model": os.getenv("MODEL", "gpt-3.5-turbo"),
+        "model": os.getenv("MODEL", "gpt-5-mini"),
         "use_test_prompt": os.getenv("USE_TEST_PROMPT", "False").lower()
         in ("true", "1", "t"),
         "auto_welcome_enabled": os.getenv("AUTO_WELCOME_ENABLED", "False").lower()
         in ("true", "1", "t"),
+        "auto_welcome_guild_id": os.getenv("AUTO_WELCOME_GUILD_ID", None),
     }
     print("Initializing config:")
     for k, v in config.items():
