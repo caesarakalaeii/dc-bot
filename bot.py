@@ -473,7 +473,17 @@ class GPTBot:
                             self.logger.info(f"Reply: {reply}")
                         else:
                             self.logger.info("Sending Message to User")
-                            await author.send(reply)
+                            try:
+                                await author.send(reply)
+                            except discord.errors.HTTPException as e:
+                                error_msg = f"Failed to send GPT reply to {author.name}: {e}"
+                                self.logger.error(error_msg)
+                                # Log to thread
+                                thread_id = await self.handle_thread(author)
+                                if e.code == 40003:
+                                    await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
+                                else:
+                                    await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
                     self.queue.task_done()
                 return
 
@@ -529,7 +539,17 @@ class GPTBot:
                 if self.debug:
                     self.logger.info(f"Reply: {reply}")
                 else:
-                    await author.send(reply)
+                    try:
+                        await author.send(reply)
+                    except discord.errors.HTTPException as e:
+                        error_msg = f"Failed to send GPT reply to {author.name}: {e}"
+                        self.logger.error(error_msg)
+                        # Log to thread
+                        thread_id = await self.handle_thread(author)
+                        if e.code == 40003:
+                            await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
+                        else:
+                            await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
 
     async def send_welcome_message(self, member):
         """
@@ -588,9 +608,15 @@ class GPTBot:
                 self.add_welcomed_user(member.id)
 
             except discord.HTTPException as e:
-                self.logger.error(
-                    f"HTTP error sending welcome to {member.name} ({member.id}): {e}"
-                )
+                if e.code == 40003:
+                    self.logger.error(
+                        f"Rate limit error sending welcome to {member.name} ({member.id}): Discord is rate limiting DM creation"
+                    )
+                    # Don't mark as welcomed - will retry on rejoin
+                else:
+                    self.logger.error(
+                        f"HTTP error sending welcome to {member.name} ({member.id}): {e}"
+                    )
 
         except asyncio.CancelledError:
             self.logger.info(f"Welcome task cancelled for {member.name} ({member.id})")
@@ -1353,8 +1379,19 @@ class GPTBot:
             for c in self.conversations:
                 if c.user == name:
                     await self.collect_message(reply, c.author, "gpt", files)
-                    await c.author.send(reply, files=files)
-                    return "Sending User defined Message"
+                    try:
+                        await c.author.send(reply, files=files)
+                        return "Sending User defined Message"
+                    except discord.errors.HTTPException as e:
+                        error_msg = f"Failed to send DM to {name}: {e}"
+                        self.logger.error(error_msg)
+                        # Log to thread
+                        thread_id = await self.handle_thread(c.author)
+                        await self.reply_to_thread(thread_id, f"⚠️ Rate limit error: Could not send message to {name}. Discord is rate limiting DM creation.", None, "gpt")
+                        # Return error to admin
+                        if e.code == 40003:
+                            return f"❌ Discord rate limit: Opening DMs too fast. Message to {name} was not sent. Please wait a moment and try again."
+                        return f"❌ Failed to send DM to {name}: {e}"
         elif len(values) == 0:
             fetch_last_message = True
         else:
@@ -1374,10 +1411,21 @@ class GPTBot:
                 if c.author is not None:
                     self.logger.warning("Resending Message")
                     await self.collect_message(reply, c.author, "user")
-                    await c.author.send(reply)
-                    for u, t in self.tasks.items():
-                        t.cancel()
-                    return "Resending Message"
+                    try:
+                        await c.author.send(reply)
+                        for u, t in self.tasks.items():
+                            t.cancel()
+                        return "Resending Message"
+                    except discord.errors.HTTPException as e:
+                        error_msg = f"Failed to resend DM to {name}: {e}"
+                        self.logger.error(error_msg)
+                        # Log to thread
+                        thread_id = await self.handle_thread(c.author)
+                        await self.reply_to_thread(thread_id, f"⚠️ Rate limit error: Could not resend message to {name}. Discord is rate limiting DM creation.", None, "gpt")
+                        # Return error to admin
+                        if e.code == 40003:
+                            return f"❌ Discord rate limit: Opening DMs too fast. Message to {name} was not resent. Please wait a moment and try again."
+                        return f"❌ Failed to resend DM to {name}: {e}"
 
                 if c.author is None:
                     reply = "User has no Author."
@@ -1408,7 +1456,21 @@ class GPTBot:
             f"Sending Fake receipt to {name}\n store name: {store_name}, amount: {amount}, file_size: {file_size}"
         )
         chat_reply = f"{self.streamer_name} shared the receipt with me, please check that the addressee ({store_name}) and the amount ({amount}.00$) are indeed correct:"
-        await target_user.send(chat_reply, files=files)
+        try:
+            await target_user.send(chat_reply, files=files)
+        except discord.errors.HTTPException as e:
+            error_msg = f"Failed to send receipt to {name}: {e}"
+            self.logger.error(error_msg)
+            # Log to thread if possible
+            try:
+                thread_id = await self.handle_thread(target_user)
+                if e.code == 40003:
+                    await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send receipt to {name}. Discord is rate limiting DM creation.", None, "gpt")
+                else:
+                    await self.reply_to_thread(thread_id, f"⚠️ Failed to send receipt to {name}: {e}", None, "gpt")
+            except Exception as thread_error:
+                self.logger.error(f"Also failed to log to thread: {thread_error}")
+            return f"Failed to send receipt: {e}"
         file = image_creation(amount, store_name)
         files = [
             file,
