@@ -392,7 +392,9 @@ class GPTBot:
 
         q = await self.queue.get()
         author = q.message.author
+        self.logger.info(f"Processing queue item for {author.name}. Total conversations: {len(self.conversations)}")
         for conversation in self.conversations:
+            self.logger.info(f"Checking conversation for user: {conversation.user}")
             if conversation.user == author.name:
 
                 messages = []  # Kinda useless but also nice
@@ -481,7 +483,7 @@ class GPTBot:
                         if self.debug:
                             self.logger.info(f"Reply: {reply}")
                         else:
-                            self.logger.info("Sending Message to User")
+                            self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
                             try:
                                 await author.send(reply)
                             except discord.errors.HTTPException as e:
@@ -494,6 +496,7 @@ class GPTBot:
                                 else:
                                     await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
                     self.queue.task_done()
+                self.logger.info(f"Finished processing for {author.name}, returning from gpt_sending")
                 return
 
     async def check_for_tools(self, response, user_id):
