@@ -448,6 +448,11 @@ class GPTBot:
                         max_completion_tokens=self.max_tokens,
                         tools=self.tools,
                     )
+
+                    # Debug logging for empty responses
+                    if response.choices[0].message.content is None or response.choices[0].message.content == "":
+                        self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
+
                     if await self.check_for_tools(response, author.id):
                         self.logger.info(
                             f"Tool called by {author.name}, handling reply in tool function."
@@ -525,6 +530,10 @@ class GPTBot:
                     max_completion_tokens=self.max_tokens,  # maximal amount of tokens, one token roughly equates to 4 chars
                     tools=self.tools,
                 )
+
+                # Debug logging for empty responses
+                if response.choices[0].message.content is None or response.choices[0].message.content == "":
+                    self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
 
                 if await self.check_for_tools(response, author.id):
                     # if a tool is called, the reply is handled in the tool function
