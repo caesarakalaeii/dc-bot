@@ -281,6 +281,7 @@ class GPTBot:
         self.threads = self.load_threads()
         self.tasks = {}
         self.queue = asyncio.Queue()
+        self.queue_processing = False
         # Auto-welcome configuration
         self.auto_welcome_enabled = bot_config.get("auto_welcome_enabled", False)
         # Auto-welcome guild ID (separate from logging guild, defaults to main guild if not specified)
@@ -386,118 +387,135 @@ class GPTBot:
                     return
 
         await self.queue.put(QueueItem(message))
-        await self.gpt_sending()
+        # Only start processing if not already running
+        if not self.queue_processing:
+            self.queue_processing = True
+            asyncio.create_task(self.gpt_sending())
 
     async def gpt_sending(self):
+        """Process all items in the queue until empty."""
+        try:
+            while not self.queue.empty():
+                q = await self.queue.get()
+                author = q.message.author
+                self.logger.info(f"Processing queue item for {author.name}. Total conversations: {len(self.conversations)}, queue size: {self.queue.qsize()}")
 
-        q = await self.queue.get()
-        author = q.message.author
-        self.logger.info(f"Processing queue item for {author.name}. Total conversations: {len(self.conversations)}")
-        for conversation in self.conversations:
-            self.logger.info(f"Checking conversation for user: {conversation.user}")
-            if conversation.user == author.name:
+                conversation_found = False
+                for conversation in self.conversations:
+                    self.logger.info(f"Checking conversation for user: {conversation.user}")
+                    if conversation.user == author.name:
+                        conversation_found = True
+                        messages = []  # Kinda useless but also nice
+                        message = ""
 
-                messages = []  # Kinda useless but also nice
-                message = ""
+                        reversed_conv = conversation.conversation.copy()
+                        reversed_conv.reverse()
+                        for c in reversed_conv:
+                            if c["role"] == "user":
+                                messages.append(c["content"])
+                            else:
+                                break
+                        messages.reverse()
+                        for m in messages:
+                            message += f"\n{m}"
+                        message_length = len(message)
+                        age = int(time.time() - q.timestamp)
 
-                reversed_conv = conversation.conversation.copy()
-                reversed_conv.reverse()
-                for c in reversed_conv:
-                    if c["role"] == "user":
-                        messages.append(c["content"])
-                    else:
-                        break
-                messages.reverse()
-                for m in messages:
-                    message += f"\n{m}"
-                message_length = len(message)
-                age = int(time.time() - q.timestamp)
+                        if not self.test_mode:
+                            time_to_wait = (
+                                random.randint(
+                                    self.timer_duration - age,
+                                    self.timer_duration + message_length - age,
+                                )
+                                / 2
+                            )
+                            time_to_type = 10 + (
+                                time_to_wait - message_length
+                            )  # type 10s at least
+                            await asyncio.sleep(time_to_wait)  # wait for further messages
 
-                if not self.test_mode:
-                    time_to_wait = (
-                        random.randint(
-                            self.timer_duration - age,
-                            self.timer_duration + message_length - age,
-                        )
-                        / 2
-                    )
-                    time_to_type = 10 + (
-                        time_to_wait - message_length
-                    )  # type 10s at least
-                    await asyncio.sleep(time_to_wait)  # wait for further messages
-
-                    async with author.typing():
-                        if age <= self.timer_duration:
-                            await asyncio.sleep(
-                                time_to_type
-                            )  # wait for further messages
+                            async with author.typing():
+                                if age <= self.timer_duration:
+                                    await asyncio.sleep(
+                                        time_to_type
+                                    )  # wait for further messages
+                                else:
+                                    async with author.typing():
+                                        await asyncio.sleep(5)
                         else:
                             async with author.typing():
                                 await asyncio.sleep(5)
-                else:
-                    async with author.typing():
-                        await asyncio.sleep(5)
-                messages = conversation.conversation
-                if len(messages) > 20:
-                    old = messages
-                    messages = [old[0]]
-                    for m in old[-20:]:
-                        messages.append(m)
-                if conversation.awaiting_response():
-                    response = self.client.chat.completions.create(
-                        model=self.MODEL_NAME,
-                        messages=messages,
-                        max_completion_tokens=self.max_tokens,
-                        tools=self.tools,
-                    )
+                        messages = conversation.conversation
+                        if len(messages) > 20:
+                            old = messages
+                            messages = [old[0]]
+                            for m in old[-20:]:
+                                messages.append(m)
+                        if conversation.awaiting_response():
+                            response = self.client.chat.completions.create(
+                                model=self.MODEL_NAME,
+                                messages=messages,
+                                max_completion_tokens=self.max_tokens,
+                                tools=self.tools,
+                            )
 
-                    # Debug logging for empty responses
-                    if response.choices[0].message.content is None or response.choices[0].message.content == "":
-                        self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
+                            # Debug logging for empty responses
+                            if response.choices[0].message.content is None or response.choices[0].message.content == "":
+                                self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
 
-                    if await self.check_for_tools(response, author.id):
-                        self.logger.info(
-                            f"Tool called by {author.name}, handling reply in tool function."
-                        )
-                        return
+                            if await self.check_for_tools(response, author.id):
+                                self.logger.info(
+                                    f"Tool called by {author.name}, handling reply in tool function."
+                                )
+                                self.queue.task_done()
+                                break
 
-                    # Die Antwort aus der response extrahieren
-                    if response.choices[0].message.content is None or response.choices[0].message.content.strip() == "":
-                        self.logger.warning(
-                            "Message ignored: No content in response, no Tool was called."
-                        )
-                        return
-                    reply: str = response.choices[0].message.content
-                    reply = reply.replace("USER_NAME", author.name)
+                            # Die Antwort aus der response extrahieren
+                            if response.choices[0].message.content is None or response.choices[0].message.content.strip() == "":
+                                self.logger.warning(
+                                    "Message ignored: No content in response, no Tool was called."
+                                )
+                                self.queue.task_done()
+                                break
+                            reply: str = response.choices[0].message.content
+                            reply = reply.replace("USER_NAME", author.name)
 
-                    # Additional check after replacement
-                    if not reply or reply.strip() == "":
-                        self.logger.warning(
-                            "Message ignored: Empty reply after processing."
-                        )
-                        return
-                    if conversation.awaiting_response():
-                        # if the conversation is awaiting a response, we can send the reply to the thread
-                        await self.collect_message(reply, author, "gpt")
-                        # send reply to user
-                        if self.debug:
-                            self.logger.info(f"Reply: {reply}")
-                        else:
-                            self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
-                            try:
-                                await author.send(reply)
-                            except discord.errors.HTTPException as e:
-                                error_msg = f"Failed to send GPT reply to {author.name}: {e}"
-                                self.logger.error(error_msg)
-                                # Log to thread
-                                thread_id = await self.handle_thread(author)
-                                if e.code == 40003:
-                                    await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
+                            # Additional check after replacement
+                            if not reply or reply.strip() == "":
+                                self.logger.warning(
+                                    "Message ignored: Empty reply after processing."
+                                )
+                                self.queue.task_done()
+                                break
+                            if conversation.awaiting_response():
+                                # if the conversation is awaiting a response, we can send the reply to the thread
+                                await self.collect_message(reply, author, "gpt")
+                                # send reply to user
+                                if self.debug:
+                                    self.logger.info(f"Reply: {reply}")
                                 else:
-                                    await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
+                                    self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
+                                    try:
+                                        await author.send(reply)
+                                    except discord.errors.HTTPException as e:
+                                        error_msg = f"Failed to send GPT reply to {author.name}: {e}"
+                                        self.logger.error(error_msg)
+                                        # Log to thread
+                                        thread_id = await self.handle_thread(author)
+                                        if e.code == 40003:
+                                            await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
+                                        else:
+                                            await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
+                        self.queue.task_done()
+                        self.logger.info(f"Finished processing for {author.name}")
+                        break
+
+                if not conversation_found:
+                    self.logger.warning(f"No conversation found for {author.name}, marking task as done")
                     self.queue.task_done()
-                self.logger.info(f"Finished processing for {author.name}, returning from gpt_sending")
-                return
+        finally:
+            self.queue_processing = False
+            self.logger.info("Queue processing complete, flag reset")
 
     async def check_for_tools(self, response, user_id):
         self.logger.info("Checking for tools in response")
