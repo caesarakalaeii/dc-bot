@@ -455,13 +455,20 @@ class GPTBot:
                         return
 
                     # Die Antwort aus der response extrahieren
-                    if response.choices[0].message.content is None:
+                    if response.choices[0].message.content is None or response.choices[0].message.content.strip() == "":
                         self.logger.warning(
                             "Message ignored: No content in response, no Tool was called."
                         )
                         return
                     reply: str = response.choices[0].message.content
                     reply = reply.replace("USER_NAME", author.name)
+
+                    # Additional check after replacement
+                    if not reply or reply.strip() == "":
+                        self.logger.warning(
+                            "Message ignored: Empty reply after processing."
+                        )
+                        return
                     if conversation.awaiting_response():
                         # if the conversation is awaiting a response, we can send the reply to the thread
                         await self.collect_message(reply, author, "gpt")
@@ -525,6 +532,14 @@ class GPTBot:
                 # Die Antwort aus der response extrahieren
                 response_message = response["choices"][0]["message"]
                 reply = response_message["content"]
+
+                # Check for empty content
+                if not reply or reply.strip() == "":
+                    self.logger.warning(
+                        "Message ignored: Empty reply from GPT."
+                    )
+                    return
+
                 # Die Antwort an den Absender der DM zurückschicken
                 await self.collect_message(reply, author, "gpt")
 
@@ -624,6 +639,12 @@ class GPTBot:
 
     async def reply_to_thread(self, thread_id, message, files=None, sender=None):
         """Send message to thread, using webhooks for user impersonation."""
+        # Don't send empty messages
+        if not message or (isinstance(message, str) and message.strip() == ""):
+            if not files or len(files) == 0:
+                self.logger.warning("Attempted to send empty message to thread, skipping")
+                return
+
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             thread = None
