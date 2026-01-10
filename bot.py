@@ -445,10 +445,7 @@ class GPTBot:
                     response = self.client.chat.completions.create(
                         model=self.MODEL_NAME,
                         messages=messages,
-                        temperature=self.temperature,
                         max_completion_tokens=self.max_tokens,
-                        frequency_penalty=0,
-                        presence_penalty=0,
                         tools=self.tools,
                     )
                     if await self.check_for_tools(response, author.id):
@@ -519,11 +516,6 @@ class GPTBot:
                     model=self.MODEL_NAME,
                     messages=messages,
                     max_completion_tokens=self.max_tokens,  # maximal amount of tokens, one token roughly equates to 4 chars
-                    temperature=self.temperature,  # control over creativity
-                    n=1,  # amount of answers
-                    top_p=1,
-                    frequency_penalty=0,
-                    presence_penalty=0,
                     tools=self.tools,
                 )
 
