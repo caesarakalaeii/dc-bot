@@ -347,7 +347,7 @@ class GPTBot:
             self.conversations.append(new_conv)
             self.logger.chatReply(user, self.bot_name, message)
             thread_id = await self.handle_thread(author)
-            await self.reply_to_thread(thread_id, message, files, author)
+            await self.reply_to_thread(thread_id, message, files, sender)
             new_conv.update_gpt(message)
             new_conv.write_conversation()
             return
@@ -458,6 +458,26 @@ class GPTBot:
                                 max_completion_tokens=self.max_tokens,
                                 tools=self.tools,
                             )
+
+                            # Handle length limit - retry with more tokens
+                            if response.choices[0].finish_reason == "length":
+                                self.logger.warning(f"Response hit token limit ({self.max_tokens}), retrying with 4096 tokens")
+                                response = self.client.chat.completions.create(
+                                    model=self.MODEL_NAME,
+                                    messages=messages,
+                                    max_completion_tokens=4096,
+                                    tools=self.tools,
+                                )
+
+                                # If still hitting limit, try 8k
+                                if response.choices[0].finish_reason == "length":
+                                    self.logger.warning(f"Response still hit token limit at 4096, retrying with 8192 tokens")
+                                    response = self.client.chat.completions.create(
+                                        model=self.MODEL_NAME,
+                                        messages=messages,
+                                        max_completion_tokens=8192,
+                                        tools=self.tools,
+                                    )
 
                             # Debug logging for empty responses
                             if response.choices[0].message.content is None or response.choices[0].message.content == "":
