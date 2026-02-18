@@ -625,17 +625,54 @@ class GPTBot:
 
             await asyncio.sleep(delay)
 
+            self.logger.info(
+                f"Welcome delay completed for {member.name} ({member.id}), verifying membership"
+            )
+
             # Check if user is still in the guild
+            # Note: If user left, the on_member_remove handler already cancelled this task
+            # This check is for additional safety and to refresh the member object
             guild = self.bot.get_guild(self.guild_id)
-            if guild:
-                try:
-                    # Refresh member object to ensure they're still in guild
-                    member = await guild.fetch_member(member.id)
-                except discord.NotFound:
+            if not guild:
+                self.logger.error(
+                    f"Guild {self.guild_id} not found - cannot verify membership for {member.name}"
+                )
+                return
+
+            # Verify user is still in guild
+            try:
+                # First try: use get_member (cache lookup, no API call)
+                cached_member = guild.get_member(member.id)
+                if cached_member:
+                    member = cached_member
                     self.logger.info(
-                        f"User {member.name} ({member.id}) left before welcome message could be sent"
+                        f"Membership verified (cached) for {member.name} ({member.id})"
                     )
-                    return
+                else:
+                    # Second try: fetch from API if not in cache
+                    member = await guild.fetch_member(member.id)
+                    self.logger.info(
+                        f"Membership verified (fetched) for {member.name} ({member.id})"
+                    )
+
+            except discord.NotFound:
+                # Definitive: user is not in the guild
+                self.logger.info(
+                    f"User {member.name} ({member.id}) not found in guild - cannot send welcome"
+                )
+                return
+
+            except discord.HTTPException as e:
+                # API error - could be rate limit, network issue, etc.
+                # Don't falsely assume user left!
+                self.logger.warning(
+                    f"API error verifying membership for {member.name} ({member.id}): {e}"
+                )
+                # Proceed optimistically - the DM send will fail gracefully if needed
+                self.logger.info(
+                    f"Attempting welcome message to {member.name} despite verification uncertainty"
+                )
+                # member object from on_member_join should still be valid for DM
 
             # Format welcome message with placeholders
             welcome_message = self.welcome_template.format(
@@ -969,6 +1006,38 @@ class GPTBot:
             self.logger.passing(
                 f"Welcome task created for {member.name} ({member.id})"
             )
+
+        @self.bot.event
+        async def on_member_remove(member):
+            """
+            Triggered when a user leaves the guild.
+            Cancels pending welcome tasks for users who left before being welcomed.
+            """
+            # Only handle leaves for the auto-welcome target guild
+            if member.guild.id != self.auto_welcome_guild_id:
+                return
+
+            self.logger.info(
+                f"Member left: {member.name} ({member.id}) from guild {member.guild.name}"
+            )
+
+            # Cancel pending welcome task if one exists
+            if member.id in self.welcome_tasks:
+                task = self.welcome_tasks[member.id]
+                if not task.done():
+                    task.cancel()
+                    self.logger.info(
+                        f"Cancelled pending welcome task for {member.name} ({member.id}) - user left server"
+                    )
+                # Task cleanup happens in the finally block of send_welcome_message
+
+            # Remove from welcomed_users to allow re-welcome on rejoin
+            if member.id in self.welcomed_users:
+                self.welcomed_users.remove(member.id)
+                self.write_welcomed_users()
+                self.logger.info(
+                    f"Removed {member.name} ({member.id}) from welcomed users - will be welcomed again on rejoin"
+                )
 
         self.bot.run(self.__bot_token)
 
