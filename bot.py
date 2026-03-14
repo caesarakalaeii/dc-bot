@@ -400,139 +400,151 @@ class GPTBot:
                 author = q.message.author
                 self.logger.info(f"Processing queue item for {author.name}. Total conversations: {len(self.conversations)}, queue size: {self.queue.qsize()}")
 
-                conversation_found = False
-                for conversation in self.conversations:
-                    self.logger.info(f"Checking conversation for user: {conversation.user}")
-                    if conversation.user == author.name:
-                        conversation_found = True
-                        messages = []  # Kinda useless but also nice
-                        message = ""
+                task_done = False
+                try:
+                    conversation_found = False
+                    for conversation in self.conversations:
+                        self.logger.info(f"Checking conversation for user: {conversation.user}")
+                        if conversation.user == author.name:
+                            conversation_found = True
+                            messages = []  # Kinda useless but also nice
+                            message = ""
 
-                        reversed_conv = conversation.conversation.copy()
-                        reversed_conv.reverse()
-                        for c in reversed_conv:
-                            if c["role"] == "user":
-                                messages.append(c["content"])
-                            else:
-                                break
-                        messages.reverse()
-                        for m in messages:
-                            message += f"\n{m}"
-                        message_length = len(message)
-                        age = int(time.time() - q.timestamp)
-
-                        if not self.test_mode:
-                            time_to_wait = (
-                                random.randint(
-                                    self.timer_duration - age,
-                                    self.timer_duration + message_length - age,
-                                )
-                                / 2
-                            )
-                            time_to_type = 10 + (
-                                time_to_wait - message_length
-                            )  # type 10s at least
-                            await asyncio.sleep(time_to_wait)  # wait for further messages
-
-                            async with author.typing():
-                                if age <= self.timer_duration:
-                                    await asyncio.sleep(
-                                        time_to_type
-                                    )  # wait for further messages
+                            reversed_conv = conversation.conversation.copy()
+                            reversed_conv.reverse()
+                            for c in reversed_conv:
+                                if c["role"] == "user":
+                                    messages.append(c["content"])
                                 else:
-                                    async with author.typing():
-                                        await asyncio.sleep(5)
-                        else:
-                            async with author.typing():
-                                await asyncio.sleep(5)
-                        messages = conversation.conversation
-                        if len(messages) > 20:
-                            old = messages
-                            messages = [old[0]]
-                            for m in old[-20:]:
-                                messages.append(m)
-                        if conversation.awaiting_response():
-                            response = self.client.chat.completions.create(
-                                model=self.MODEL_NAME,
-                                messages=messages,
-                                max_completion_tokens=self.max_tokens,
-                                tools=self.tools,
-                            )
+                                    break
+                            messages.reverse()
+                            for m in messages:
+                                message += f"\n{m}"
+                            message_length = len(message)
+                            age = int(time.time() - q.timestamp)
 
-                            # Handle length limit - retry with more tokens
-                            if response.choices[0].finish_reason == "length":
-                                self.logger.warning(f"Response hit token limit ({self.max_tokens}), retrying with 4096 tokens")
+                            if not self.test_mode:
+                                time_to_wait = (
+                                    random.randint(
+                                        self.timer_duration - age,
+                                        self.timer_duration + message_length - age,
+                                    )
+                                    / 2
+                                )
+                                time_to_type = 10 + (
+                                    time_to_wait - message_length
+                                )  # type 10s at least
+                                await asyncio.sleep(time_to_wait)  # wait for further messages
+
+                                async with author.typing():
+                                    if age <= self.timer_duration:
+                                        await asyncio.sleep(
+                                            time_to_type
+                                        )  # wait for further messages
+                                    else:
+                                        async with author.typing():
+                                            await asyncio.sleep(5)
+                            else:
+                                async with author.typing():
+                                    await asyncio.sleep(5)
+                            messages = conversation.conversation
+                            if len(messages) > 20:
+                                old = messages
+                                messages = [old[0]]
+                                for m in old[-20:]:
+                                    messages.append(m)
+                            if conversation.awaiting_response():
                                 response = self.client.chat.completions.create(
                                     model=self.MODEL_NAME,
                                     messages=messages,
-                                    max_completion_tokens=4096,
+                                    max_completion_tokens=self.max_tokens,
                                     tools=self.tools,
                                 )
 
-                                # If still hitting limit, try 8k
+                                # Handle length limit - retry with more tokens
                                 if response.choices[0].finish_reason == "length":
-                                    self.logger.warning(f"Response still hit token limit at 4096, retrying with 8192 tokens")
+                                    self.logger.warning(f"Response hit token limit ({self.max_tokens}), retrying with 4096 tokens")
                                     response = self.client.chat.completions.create(
                                         model=self.MODEL_NAME,
                                         messages=messages,
-                                        max_completion_tokens=8192,
+                                        max_completion_tokens=4096,
                                         tools=self.tools,
                                     )
 
-                            # Debug logging for empty responses
-                            if response.choices[0].message.content is None or response.choices[0].message.content == "":
-                                self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
+                                    # If still hitting limit, try 8k
+                                    if response.choices[0].finish_reason == "length":
+                                        self.logger.warning(f"Response still hit token limit at 4096, retrying with 8192 tokens")
+                                        response = self.client.chat.completions.create(
+                                            model=self.MODEL_NAME,
+                                            messages=messages,
+                                            max_completion_tokens=8192,
+                                            tools=self.tools,
+                                        )
 
-                            if await self.check_for_tools(response, author.id):
-                                self.logger.info(
-                                    f"Tool called by {author.name}, handling reply in tool function."
-                                )
-                                self.queue.task_done()
-                                break
+                                # Debug logging for empty responses
+                                if response.choices[0].message.content is None or response.choices[0].message.content == "":
+                                    self.logger.error(f"GPT returned empty content. Full response: finish_reason={response.choices[0].finish_reason}, tool_calls={response.choices[0].message.tool_calls}, refusal={getattr(response.choices[0].message, 'refusal', None)}")
 
-                            # Die Antwort aus der response extrahieren
-                            if response.choices[0].message.content is None or response.choices[0].message.content.strip() == "":
-                                self.logger.warning(
-                                    "Message ignored: No content in response, no Tool was called."
-                                )
-                                self.queue.task_done()
-                                break
-                            reply: str = response.choices[0].message.content
-                            reply = reply.replace("USER_NAME", author.name)
+                                if await self.check_for_tools(response, author.id):
+                                    self.logger.info(
+                                        f"Tool called by {author.name}, handling reply in tool function."
+                                    )
+                                    self.queue.task_done()
+                                    task_done = True
+                                    break
 
-                            # Additional check after replacement
-                            if not reply or reply.strip() == "":
-                                self.logger.warning(
-                                    "Message ignored: Empty reply after processing."
-                                )
-                                self.queue.task_done()
-                                break
-                            if conversation.awaiting_response():
-                                # if the conversation is awaiting a response, we can send the reply to the thread
-                                await self.collect_message(reply, author, "gpt")
-                                # send reply to user
-                                if self.debug:
-                                    self.logger.info(f"Reply: {reply}")
-                                else:
-                                    self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
-                                    try:
-                                        await author.send(reply)
-                                    except discord.errors.HTTPException as e:
-                                        error_msg = f"Failed to send GPT reply to {author.name}: {e}"
-                                        self.logger.error(error_msg)
-                                        # Log to thread
-                                        thread_id = await self.handle_thread(author)
-                                        if e.code == 40003:
-                                            await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
-                                        else:
-                                            await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
+                                # Die Antwort aus der response extrahieren
+                                if response.choices[0].message.content is None or response.choices[0].message.content.strip() == "":
+                                    self.logger.warning(
+                                        "Message ignored: No content in response, no Tool was called."
+                                    )
+                                    self.queue.task_done()
+                                    task_done = True
+                                    break
+                                reply: str = response.choices[0].message.content
+                                reply = reply.replace("USER_NAME", author.name)
+
+                                # Additional check after replacement
+                                if not reply or reply.strip() == "":
+                                    self.logger.warning(
+                                        "Message ignored: Empty reply after processing."
+                                    )
+                                    self.queue.task_done()
+                                    task_done = True
+                                    break
+                                if conversation.awaiting_response():
+                                    # if the conversation is awaiting a response, we can send the reply to the thread
+                                    await self.collect_message(reply, author, "gpt")
+                                    # send reply to user
+                                    if self.debug:
+                                        self.logger.info(f"Reply: {reply}")
+                                    else:
+                                        self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
+                                        try:
+                                            await author.send(reply)
+                                        except discord.errors.HTTPException as e:
+                                            error_msg = f"Failed to send GPT reply to {author.name}: {e}"
+                                            self.logger.error(error_msg)
+                                            # Log to thread
+                                            thread_id = await self.handle_thread(author)
+                                            if e.code == 40003:
+                                                await self.reply_to_thread(thread_id, f"⚠️ Rate limit: Could not send GPT reply to {author.name}. Discord is rate limiting DM creation. Will retry on next message.", None, "gpt")
+                                            else:
+                                                await self.reply_to_thread(thread_id, f"⚠️ Failed to send GPT reply to {author.name}: {e}", None, "gpt")
+                            self.queue.task_done()
+                            task_done = True
+                            self.logger.info(f"Finished processing for {author.name}")
+                            break
+
+                    if not conversation_found:
+                        self.logger.warning(f"No conversation found for {author.name}, marking task as done")
                         self.queue.task_done()
-                        self.logger.info(f"Finished processing for {author.name}")
-                        break
-
-                if not conversation_found:
-                    self.logger.warning(f"No conversation found for {author.name}, marking task as done")
-                    self.queue.task_done()
+                        task_done = True
+                except Exception as e:
+                    self.logger.error(f"Unhandled exception while processing message for {author.name}: {e}", exc_info=True)
+                finally:
+                    if not task_done:
+                        self.queue.task_done()
         finally:
             self.queue_processing = False
             self.logger.info("Queue processing complete, flag reset")
@@ -773,25 +785,36 @@ class GPTBot:
                 )
 
     async def get_or_create_webhook(self, thread):
-        """Get cached webhook for thread or create new one."""
-        if thread.id in self.webhook_cache:
-            # Return cached webhook
-            return self.webhook_cache[thread.id]
+        """Get cached webhook for thread's parent channel, or find/create one.
+
+        One webhook per parent channel is enough since webhook.send() accepts a thread parameter.
+        On cache miss, we first check Discord for an existing relay webhook to survive restarts
+        and avoid hitting Discord's 15-webhook-per-channel limit.
+        """
+        parent_channel = thread.parent
+        if parent_channel is None:
+            self.logger.error(f"Thread {thread.id} has no parent channel")
+            return None
+
+        if parent_channel.id in self.webhook_cache:
+            return self.webhook_cache[parent_channel.id]
 
         try:
-            # Webhooks must be created on the parent channel, not the thread
-            parent_channel = thread.parent
-            if parent_channel is None:
-                self.logger.error(f"Thread {thread.id} has no parent channel")
-                return None
+            # Check for an existing relay webhook before creating a new one
+            existing_webhooks = await parent_channel.webhooks()
+            for wh in existing_webhooks:
+                if wh.name == "relay":
+                    self.webhook_cache[parent_channel.id] = wh
+                    self.logger.info(f"Reusing existing relay webhook {wh.id} for channel {parent_channel.id}")
+                    return wh
 
-            # Create new webhook on the parent channel
+            # No existing relay webhook found — create one
             webhook = await parent_channel.create_webhook(
-                name=f"relay_{thread.id}",
+                name="relay",
                 reason="Message relay for conversation tracking",
             )
-            self.webhook_cache[thread.id] = webhook
-            self.logger.info(f"Created webhook for thread {thread.id} on parent channel {parent_channel.id}")
+            self.webhook_cache[parent_channel.id] = webhook
+            self.logger.info(f"Created relay webhook {webhook.id} for channel {parent_channel.id}")
             return webhook
         except discord.Forbidden:
             self.logger.error(
@@ -1458,7 +1481,7 @@ class GPTBot:
 
         # Clear webhook cache
         if self.webhook_cache:
-            self.logger.info(f"Clearing {len(self.webhook_cache)} cached webhooks")
+            self.logger.info(f"Clearing webhook cache ({len(self.webhook_cache)} channels)")
             self.webhook_cache.clear()
 
         self.logger.error("Saved conversations.\nShutting down.")
