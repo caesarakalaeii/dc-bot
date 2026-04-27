@@ -282,6 +282,7 @@ class GPTBot:
         self.tasks = {}
         self.queue = asyncio.Queue()
         self.queue_processing = False
+        self.queue_task = None  # strong reference so asyncio doesn't GC the worker
         # Auto-welcome configuration
         self.auto_welcome_enabled = bot_config.get("auto_welcome_enabled", False)
         # Auto-welcome guild ID (separate from logging guild, defaults to main guild if not specified)
@@ -311,16 +312,65 @@ class GPTBot:
     async def handle_thread(self, author):
         user = author.name
         thread_id = None
+        thread_entry = None
         for thread in self.threads:
             if user in thread.keys():
                 thread_id = thread[user]["thread_id"]
+                thread_entry = thread
+
+        if thread_id is not None and not await self._thread_still_exists(thread_id):
+            self.logger.warning(
+                f"Saved thread {thread_id} for {user} no longer exists, recreating."
+            )
+            if thread_entry is not None:
+                try:
+                    self.threads.remove(thread_entry)
+                    self.write_threads()
+                except ValueError:
+                    pass
+            thread_id = None
+
         if thread_id is None:
-            thread = await self.create_thread(author)
-            thread_id = thread.id
+            try:
+                thread = await self.create_thread(author)
+                if thread is not None:
+                    thread_id = thread.id
+            except discord.HTTPException as e:
+                self.logger.error(f"Failed to create thread for {user}: {e}")
+                return None
         return thread_id
 
+    async def _thread_still_exists(self, thread_id):
+        """Return True if the thread is currently known to Discord (active or archived)."""
+        channel = self.bot.get_channel(self.channel_id)
+        if channel is not None:
+            for existing_thread in channel.threads:
+                if existing_thread.id == thread_id:
+                    return True
+        try:
+            fetched = await self.bot.fetch_channel(thread_id)
+        except (discord.NotFound, discord.Forbidden):
+            return False
+        except discord.HTTPException as e:
+            # Transient — assume the thread exists and let the caller try.
+            self.logger.warning(f"Could not verify thread {thread_id}: {e}")
+            return True
+        if fetched is None:
+            return False
+        if getattr(fetched, "archived", False):
+            try:
+                await fetched.edit(archived=False)
+            except discord.HTTPException as e:
+                self.logger.warning(f"Failed to unarchive thread {thread_id}: {e}")
+        return True
+
     async def collect_message(self, message, author, sender, files=None):
-        """Collects a message, stores it in the conversation handler and replies to the thread."""
+        """Collects a message, stores it in the conversation handler and replies to the thread.
+
+        Thread mirroring is best-effort: if it fails for any reason (stale thread,
+        permissions, Discord HTTP errors), we still persist the conversation and
+        continue so the GPT/DM path keeps working.
+        """
         user = author.name
         for conversation in self.conversations:
             if conversation.user == user:
@@ -328,15 +378,13 @@ class GPTBot:
                     conversation.author = author
                 if sender == "gpt":
                     self.logger.chatReply(user, self.bot_name, message)
-                    thread_id = await self.handle_thread(author)
-                    await self.reply_to_thread(thread_id, message, files, sender)
+                    await self._mirror_to_thread(author, message, files, sender)
                     conversation.update_gpt(message)
                     conversation.write_conversation()
                     return
                 else:
                     self.logger.userReply(user, message)
-                    thread_id = await self.handle_thread(author)
-                    await self.reply_to_thread(thread_id, message, files, author)
+                    await self._mirror_to_thread(author, message, files, author)
                     conversation.update_user(message)
                     conversation.write_conversation()
                     return
@@ -346,8 +394,7 @@ class GPTBot:
             )
             self.conversations.append(new_conv)
             self.logger.chatReply(user, self.bot_name, message)
-            thread_id = await self.handle_thread(author)
-            await self.reply_to_thread(thread_id, message, files, sender)
+            await self._mirror_to_thread(author, message, files, sender)
             new_conv.update_gpt(message)
             new_conv.write_conversation()
             return
@@ -358,8 +405,22 @@ class GPTBot:
         new_conv.write_conversation()
         self.conversations.append(new_conv)
         self.logger.userReply(user, message)
-        thread_id = await self.handle_thread(author)
-        await self.reply_to_thread(thread_id, message, files, author)
+        await self._mirror_to_thread(author, message, files, author)
+
+    async def _mirror_to_thread(self, author, message, files, sender):
+        """Best-effort thread mirroring. Never raises — failures are logged."""
+        try:
+            thread_id = await self.handle_thread(author)
+            if thread_id is None:
+                self.logger.warning(
+                    f"No thread available for {author.name}, skipping thread mirror."
+                )
+                return
+            await self.reply_to_thread(thread_id, message, files, sender)
+        except Exception as e:
+            self.logger.error(
+                f"Thread mirror failed for {author.name}, continuing without it: {e!r}"
+            )
 
     async def message_handler(self, message):
         user_prompt, author, files = await unpack_message(message)
@@ -387,10 +448,13 @@ class GPTBot:
                     return
 
         await self.queue.put(QueueItem(message))
-        # Only start processing if not already running
+        # Only start processing if not already running.
+        # Hold a strong reference to the task — asyncio only keeps weak refs and
+        # can otherwise GC the worker before it runs, leaving queue_processing
+        # stuck True forever and the queue silently stalled.
         if not self.queue_processing:
             self.queue_processing = True
-            asyncio.create_task(self.gpt_sending())
+            self.queue_task = asyncio.create_task(self.gpt_sending())
 
     async def gpt_sending(self):
         """Process all items in the queue until empty."""
@@ -541,7 +605,11 @@ class GPTBot:
                         self.queue.task_done()
                         task_done = True
                 except Exception as e:
-                    self.logger.error(f"Unhandled exception while processing message for {author.name}: {e}", exc_info=True)
+                    import traceback
+                    self.logger.error(
+                        f"Unhandled exception while processing message for {author.name}: {e!r}\n"
+                        f"{traceback.format_exc()}"
+                    )
                 finally:
                     if not task_done:
                         self.queue.task_done()
