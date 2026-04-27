@@ -855,9 +855,14 @@ class GPTBot:
     async def get_or_create_webhook(self, thread):
         """Get cached webhook for thread's parent channel, or find/create one.
 
-        One webhook per parent channel is enough since webhook.send() accepts a thread parameter.
-        On cache miss, we first check Discord for an existing relay webhook to survive restarts
-        and avoid hitting Discord's 15-webhook-per-channel limit.
+        One webhook per parent channel is enough since webhook.send() accepts a thread
+        parameter. Older versions of this bot created one webhook per thread, so a
+        single parent channel can accumulate up to Discord's 15-webhook cap. On cache
+        miss we:
+          1. Reuse an existing webhook named "relay".
+          2. Otherwise, reuse any bot-owned webhook (renaming it to "relay") and
+             delete the rest of our orphans to free slots.
+          3. Otherwise, create a fresh "relay" webhook.
         """
         parent_channel = thread.parent
         if parent_channel is None:
@@ -868,21 +873,72 @@ class GPTBot:
             return self.webhook_cache[parent_channel.id]
 
         try:
-            # Check for an existing relay webhook before creating a new one
             existing_webhooks = await parent_channel.webhooks()
+
+            # 1) Prefer an already-named relay webhook
             for wh in existing_webhooks:
                 if wh.name == "relay":
                     self.webhook_cache[parent_channel.id] = wh
-                    self.logger.info(f"Reusing existing relay webhook {wh.id} for channel {parent_channel.id}")
+                    self.logger.info(
+                        f"Reusing existing relay webhook {wh.id} for channel {parent_channel.id}"
+                    )
                     return wh
 
-            # No existing relay webhook found — create one
-            webhook = await parent_channel.create_webhook(
-                name="relay",
-                reason="Message relay for conversation tracking",
-            )
+            # 2) Adopt any bot-owned orphans from the old per-thread design
+            bot_user_id = self.bot.user.id if self.bot.user is not None else None
+            bot_owned = [
+                wh for wh in existing_webhooks
+                if wh.user is not None and bot_user_id is not None and wh.user.id == bot_user_id
+            ]
+            if bot_owned:
+                primary = bot_owned[0]
+                stale = bot_owned[1:]
+                self.logger.warning(
+                    f"Channel {parent_channel.id} has {len(bot_owned)} bot-owned webhooks "
+                    f"(no 'relay' named). Adopting {primary.id} and cleaning up {len(stale)} orphans."
+                )
+                for wh in stale:
+                    try:
+                        await wh.delete(reason="Cleaning up stale relay webhooks")
+                        self.logger.info(
+                            f"Deleted stale bot-owned webhook {wh.id} in channel {parent_channel.id}"
+                        )
+                    except discord.HTTPException as e:
+                        self.logger.warning(
+                            f"Failed to delete stale webhook {wh.id}: {e}"
+                        )
+                if primary.name != "relay":
+                    try:
+                        await primary.edit(name="relay", reason="Standardize relay webhook name")
+                    except discord.HTTPException as e:
+                        self.logger.warning(
+                            f"Failed to rename webhook {primary.id} to 'relay': {e}"
+                        )
+                self.webhook_cache[parent_channel.id] = primary
+                return primary
+
+            # 3) No usable webhook — create one
+            try:
+                webhook = await parent_channel.create_webhook(
+                    name="relay",
+                    reason="Message relay for conversation tracking",
+                )
+            except discord.HTTPException as e:
+                if getattr(e, "code", None) == 30007:
+                    self.logger.error(
+                        f"Cannot create relay webhook in channel {parent_channel.id}: "
+                        f"channel is at the 15-webhook cap and none are bot-owned. "
+                        f"Manual cleanup required."
+                    )
+                else:
+                    self.logger.error(
+                        f"Failed to create webhook for thread {thread.id}: {e}"
+                    )
+                return None
             self.webhook_cache[parent_channel.id] = webhook
-            self.logger.info(f"Created relay webhook {webhook.id} for channel {parent_channel.id}")
+            self.logger.info(
+                f"Created relay webhook {webhook.id} for channel {parent_channel.id}"
+            )
             return webhook
         except discord.Forbidden:
             self.logger.error(
@@ -890,7 +946,9 @@ class GPTBot:
             )
             return None
         except discord.HTTPException as e:
-            self.logger.error(f"Failed to create webhook for thread {thread.id}: {e}")
+            self.logger.error(
+                f"Failed to fetch/create webhook for thread {thread.id}: {e}"
+            )
             return None
 
     async def send_via_webhook(self, thread, message, username, avatar_url, files=None):
