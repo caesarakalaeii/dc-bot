@@ -19,6 +19,8 @@ from utils import (
     list_conversations,
     unpack_message,
     ensure_persistence_dir_exists,
+    encode_bytes_to_data_url,
+    IMAGE_EXTENSIONS,
 )
 
 
@@ -33,6 +35,10 @@ class GPTBot:
         ensure_persistence_dir_exists()
         ensure_persistence_dir_exists("media")
         self.conversations = []
+        # Per-user pending image data URLs to attach to the next API request,
+        # keyed by author.name. Populated from Discord attachments on receive,
+        # consumed and cleared when the model replies.
+        self.pending_images: dict[str, list[tuple[str, str]]] = {}
         self.channel_id = int(bot_config["channel_id"])
         self.guild_id = int(bot_config["guild_id"])
         self.commands_enabled = bot_config["commands_enabled"]
@@ -430,16 +436,50 @@ class GPTBot:
             return
         if await self.check_command(message):
             return
-        media_amount = len(files)
-        if media_amount > 0:
-            save_media(name, message.attachments)
-            filenames = ""
-            for m in files:
-                filenames += m.filename + ", "
-            user_prompt = (
-                f"[{media_amount} amazing Media Attachments, namely:{filenames}]\n"
-                + user_prompt
-            )
+
+        if message.attachments:
+            image_attachments = [
+                a for a in message.attachments
+                if os.path.splitext(a.filename)[1].lower() in IMAGE_EXTENSIONS
+            ]
+            non_image_attachments = [
+                a for a in message.attachments
+                if os.path.splitext(a.filename)[1].lower() not in IMAGE_EXTENSIONS
+            ]
+
+            if non_image_attachments:
+                save_media(name, non_image_attachments)
+                filenames = ", ".join(a.filename for a in non_image_attachments) + ", "
+                user_prompt = (
+                    f"[{len(non_image_attachments)} amazing Media Attachments, namely:{filenames}]\n"
+                    + user_prompt
+                )
+
+            if image_attachments:
+                image_names: list[str] = []
+                for att in image_attachments:
+                    try:
+                        data = await att.read()
+                    except (discord.HTTPException, discord.NotFound) as e:
+                        self.logger.error(
+                            f"Failed to read image {att.filename} from {name}: {e}"
+                        )
+                        continue
+                    data_url = encode_bytes_to_data_url(data, att.filename)
+                    if data_url is None:
+                        continue
+                    self.pending_images.setdefault(name, []).append(
+                        (att.filename, data_url)
+                    )
+                    image_names.append(att.filename)
+                if image_names:
+                    placeholder = "\n".join(f"[image: {n}]" for n in image_names)
+                    user_prompt = (
+                        placeholder + "\n" + user_prompt
+                        if user_prompt
+                        else placeholder
+                    )
+
         await self.collect_message(user_prompt, author, "user", files)
         for conversation in self.conversations:
             if conversation.user == name:
@@ -455,6 +495,29 @@ class GPTBot:
         if not self.queue_processing:
             self.queue_processing = True
             self.queue_task = asyncio.create_task(self.gpt_sending())
+
+    def _attach_pending_images(self, messages: list[dict], user_name: str) -> list[dict]:
+        """Attach this user's queued images to the LAST message and clear the queue.
+
+        Image bytes are sent only on this single request — Discord's thread mirror
+        is the durable copy, so we never persist them to disk or to the
+        conversation JSON. After this call the pending queue is empty and any
+        retry will reuse the already-built ``api_messages`` list.
+        """
+        pending = self.pending_images.pop(user_name, [])
+        if not pending or not messages:
+            return messages
+
+        api_messages = list(messages)
+        last = api_messages[-1]
+        last_text = last.get("content", "") if isinstance(last.get("content"), str) else ""
+        new_content: list[dict] = []
+        if last_text:
+            new_content.append({"type": "text", "text": last_text})
+        for _filename, data_url in pending:
+            new_content.append({"type": "image_url", "image_url": {"url": data_url}})
+        api_messages[-1] = {**last, "content": new_content}
+        return api_messages
 
     async def gpt_sending(self):
         """Process all items in the queue until empty."""
@@ -518,9 +581,12 @@ class GPTBot:
                                 for m in old[-20:]:
                                     messages.append(m)
                             if conversation.awaiting_response():
+                                api_messages = self._attach_pending_images(
+                                    messages, author.name
+                                )
                                 response = self.client.chat.completions.create(
                                     model=self.MODEL_NAME,
-                                    messages=messages,
+                                    messages=api_messages,
                                     max_completion_tokens=self.max_tokens,
                                     tools=self.tools,
                                 )
@@ -530,7 +596,7 @@ class GPTBot:
                                     self.logger.warning(f"Response hit token limit ({self.max_tokens}), retrying with 4096 tokens")
                                     response = self.client.chat.completions.create(
                                         model=self.MODEL_NAME,
-                                        messages=messages,
+                                        messages=api_messages,
                                         max_completion_tokens=4096,
                                         tools=self.tools,
                                     )
@@ -540,7 +606,7 @@ class GPTBot:
                                         self.logger.warning(f"Response still hit token limit at 4096, retrying with 8192 tokens")
                                         response = self.client.chat.completions.create(
                                             model=self.MODEL_NAME,
-                                            messages=messages,
+                                            messages=api_messages,
                                             max_completion_tokens=8192,
                                             tools=self.tools,
                                         )
@@ -645,9 +711,10 @@ class GPTBot:
                     for m in old[-20:]:
                         messages.append(m)
 
+                api_messages = self._attach_pending_images(messages, author.name)
                 response = self.client.chat.completions.create(
                     model=self.MODEL_NAME,
-                    messages=messages,
+                    messages=api_messages,
                     max_completion_tokens=self.max_tokens,  # maximal amount of tokens, one token roughly equates to 4 chars
                     tools=self.tools,
                 )

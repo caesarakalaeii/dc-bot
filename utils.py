@@ -1,7 +1,21 @@
+import base64
 import json
 import os
 
 import requests
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+IMAGE_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+def _is_image_path(path: str) -> bool:
+    return os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS
 
 
 def list_conversations(bot_name: str):
@@ -24,15 +38,24 @@ def load_conversation(name: str, number: int | None, bot_name):
             raise FileNotFoundError
 
 
-def save_media(name: str, medias):
+def save_media(name: str, medias) -> None:
+    """Download non-image attachments to persistence/media/{name}_media/.
+
+    Images are intentionally skipped — Discord's thread mirror is the durable
+    copy, and we encode them straight into the OpenAI request from memory.
+    Non-image files (PDFs, audio, video, etc.) are still persisted because
+    the model only ever sees their filenames in the placeholder text.
+    """
     dir_path = f"persistence/media/{name}_media"
     try:
-        os.makedirs(dir_path, exist_ok=True)  # Create directory if it doesn't exist
+        os.makedirs(dir_path, exist_ok=True)
     except OSError as e:
         print(f"Error creating directory: {e}")
         return
 
     for media in medias:
+        if _is_image_path(media.filename):
+            continue
         file_path = os.path.join(dir_path, media.filename)
         if not os.path.exists(file_path):
             try:
@@ -61,6 +84,15 @@ def save_media(name: str, medias):
                         print(f"Error saving media: {e}")
                         break
                 i += 1
+
+
+def encode_bytes_to_data_url(data: bytes, filename: str) -> str | None:
+    """Encode raw image bytes to a data: URL, deriving MIME from filename."""
+    mime = IMAGE_MIME_TYPES.get(os.path.splitext(filename)[1].lower())
+    if mime is None:
+        print(f"Skipping unsupported image extension: {filename}")
+        return None
+    return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
 
 
 async def unpack_message(message_object):
