@@ -28,6 +28,11 @@ class GPTBot:
 
     queue: asyncio.Queue
 
+    # Hard cap on images sent to GPT per request, summed across all queued
+    # messages in the same wait window. Artists routinely drop 20-30 references
+    # at once; we don't need to bill the model on every single one.
+    MAX_IMAGES_PER_REQUEST = 3
+
     def __init__(
         self,
         bot_config: dict,
@@ -456,8 +461,20 @@ class GPTBot:
                 )
 
             if image_attachments:
+                already_pending = len(self.pending_images.get(name, []))
+                remaining_slots = max(
+                    0, self.MAX_IMAGES_PER_REQUEST - already_pending
+                )
+                accepted = image_attachments[:remaining_slots]
+                dropped_count = len(image_attachments) - len(accepted)
+                if dropped_count > 0:
+                    self.logger.info(
+                        f"Dropping {dropped_count} image(s) from {name}: "
+                        f"cap is {self.MAX_IMAGES_PER_REQUEST} per request"
+                    )
+
                 image_names: list[str] = []
-                for att in image_attachments:
+                for att in accepted:
                     try:
                         data = await att.read()
                     except (discord.HTTPException, discord.NotFound) as e:
@@ -472,8 +489,13 @@ class GPTBot:
                         (att.filename, data_url)
                     )
                     image_names.append(att.filename)
-                if image_names:
-                    placeholder = "\n".join(f"[image: {n}]" for n in image_names)
+                placeholder_parts = [f"[image: {n}]" for n in image_names]
+                if dropped_count > 0:
+                    placeholder_parts.append(
+                        f"[+{dropped_count} more image(s) not processed]"
+                    )
+                if placeholder_parts:
+                    placeholder = "\n".join(placeholder_parts)
                     user_prompt = (
                         placeholder + "\n" + user_prompt
                         if user_prompt
