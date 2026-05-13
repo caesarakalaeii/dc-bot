@@ -801,10 +801,10 @@ class GPTBot:
             # Check if user is still in the guild
             # Note: If user left, the on_member_remove handler already cancelled this task
             # This check is for additional safety and to refresh the member object
-            guild = self.bot.get_guild(self.guild_id)
+            guild = self.bot.get_guild(self.auto_welcome_guild_id)
             if not guild:
                 self.logger.error(
-                    f"Guild {self.guild_id} not found - cannot verify membership for {member.name}"
+                    f"Guild {self.auto_welcome_guild_id} not found - cannot verify membership for {member.name}"
                 )
                 return
 
