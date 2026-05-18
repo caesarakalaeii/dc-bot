@@ -3,6 +3,8 @@ import json
 import os
 import random
 import time
+from contextlib import asynccontextmanager
+
 import discord
 import openai
 from openai import OpenAI
@@ -518,6 +520,31 @@ class GPTBot:
             self.queue_processing = True
             self.queue_task = asyncio.create_task(self.gpt_sending())
 
+    @asynccontextmanager
+    async def _safe_typing(self, author):
+        # Typing indicator is purely cosmetic. A transient aiohttp error
+        # (e.g. ServerDisconnectedError on a stale connection) must not abort
+        # the GPT response cycle and drop the user's message.
+        cm = author.typing()
+        entered = False
+        try:
+            try:
+                await cm.__aenter__()
+                entered = True
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to start typing for {author.name}: {e!r}"
+                )
+            yield
+        finally:
+            if entered:
+                try:
+                    await cm.__aexit__(None, None, None)
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to stop typing for {author.name}: {e!r}"
+                    )
+
     def _attach_pending_images(self, messages: list[dict], user_name: str) -> list[dict]:
         """Attach this user's queued images to the LAST message and clear the queue.
 
@@ -585,16 +612,15 @@ class GPTBot:
                                 )  # type 10s at least
                                 await asyncio.sleep(time_to_wait)  # wait for further messages
 
-                                async with author.typing():
+                                async with self._safe_typing(author):
                                     if age <= self.timer_duration:
                                         await asyncio.sleep(
                                             time_to_type
                                         )  # wait for further messages
                                     else:
-                                        async with author.typing():
-                                            await asyncio.sleep(5)
+                                        await asyncio.sleep(5)
                             else:
-                                async with author.typing():
+                                async with self._safe_typing(author):
                                     await asyncio.sleep(5)
                             messages = conversation.conversation
                             if len(messages) > 20:
