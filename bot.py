@@ -727,6 +727,31 @@ class GPTBot:
         api_messages[-1] = {**last, "content": new_content}
         return api_messages
 
+    def _create_completion(self, api_messages):
+        """Create a chat completion, escalating the token budget on truncation.
+
+        Reasoning-capable models (e.g. gpt-5-mini) can spend the entire budget on
+        hidden reasoning and return empty content with finish_reason 'length'.
+        We retry at progressively larger budgets so a low configured max_tokens
+        does not silently swallow the reply. Shared by the queued path and the
+        direct generation path (retrigger / staff thread injection).
+        """
+        budgets = [self.max_tokens] + [b for b in (4096, 8192) if b > self.max_tokens]
+        response = None
+        for budget in budgets:
+            response = self.client.chat.completions.create(
+                model=self.MODEL_NAME,
+                messages=api_messages,
+                max_completion_tokens=budget,
+                tools=self.tools,
+            )
+            if response.choices[0].finish_reason != "length":
+                break
+            self.logger.warning(
+                f"Response hit token limit at {budget}, retrying with a larger budget"
+            )
+        return response
+
     async def gpt_sending(self):
         """Process all items in the queue until empty."""
         try:
@@ -791,32 +816,7 @@ class GPTBot:
                                 api_messages = self._attach_pending_images(
                                     messages, author.name
                                 )
-                                response = self.client.chat.completions.create(
-                                    model=self.MODEL_NAME,
-                                    messages=api_messages,
-                                    max_completion_tokens=self.max_tokens,
-                                    tools=self.tools,
-                                )
-
-                                # Handle length limit - retry with more tokens
-                                if response.choices[0].finish_reason == "length":
-                                    self.logger.warning(f"Response hit token limit ({self.max_tokens}), retrying with 4096 tokens")
-                                    response = self.client.chat.completions.create(
-                                        model=self.MODEL_NAME,
-                                        messages=api_messages,
-                                        max_completion_tokens=4096,
-                                        tools=self.tools,
-                                    )
-
-                                    # If still hitting limit, try 8k
-                                    if response.choices[0].finish_reason == "length":
-                                        self.logger.warning(f"Response still hit token limit at 4096, retrying with 8192 tokens")
-                                        response = self.client.chat.completions.create(
-                                            model=self.MODEL_NAME,
-                                            messages=api_messages,
-                                            max_completion_tokens=8192,
-                                            tools=self.tools,
-                                        )
+                                response = self._create_completion(api_messages)
 
                                 # Debug logging for empty responses
                                 if response.choices[0].message.content is None or response.choices[0].message.content == "":
@@ -919,12 +919,7 @@ class GPTBot:
                         messages.append(m)
 
                 api_messages = self._attach_pending_images(messages, author.name)
-                response = self.client.chat.completions.create(
-                    model=self.MODEL_NAME,
-                    messages=api_messages,
-                    max_completion_tokens=self.max_tokens,  # maximal amount of tokens, one token roughly equates to 4 chars
-                    tools=self.tools,
-                )
+                response = self._create_completion(api_messages)
 
                 # Debug logging for empty responses
                 if response.choices[0].message.content is None or response.choices[0].message.content == "":
