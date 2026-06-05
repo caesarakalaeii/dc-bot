@@ -9,3 +9,5 @@
 *threads*
 *full_convs*
 .idea
+.venv
+.pytest_cache

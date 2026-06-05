@@ -25,6 +25,13 @@ from utils import (
     split_message,
     IMAGE_EXTENSIONS,
 )
+from identity import (
+    IdentityRegistry,
+    migrate_conversation_files,
+    migrate_media_dir,
+    move_dict_key,
+    rekey_thread_entries,
+)
 
 
 class GPTBot:
@@ -35,6 +42,10 @@ class GPTBot:
     # messages in the same wait window. Artists routinely drop 20-30 references
     # at once; we don't need to bill the model on every single one.
     MAX_IMAGES_PER_REQUEST = 3
+
+    # Minimum whitelist permission required to inject a third-party message into
+    # a user's conversation by posting in their monitoring thread.
+    THIRD_PARTY_PERM = 10
 
     def __init__(
         self,
@@ -299,6 +310,10 @@ class GPTBot:
         loaded_white = self.load_whitelist()
         self.white_list = loaded_white
         self.threads = self.load_threads()
+        # Stable identity (id -> current username), bootstrapped from the thread
+        # map so users who predate the registry — including any who already
+        # renamed — are recoverable on their next message. See ADR 0001.
+        self.identities = IdentityRegistry(self.bot_name).load(self.threads)
         self.tasks = {}
         self.queue = asyncio.Queue()
         self.queue_processing = False
@@ -442,9 +457,57 @@ class GPTBot:
                 f"Thread mirror failed for {author.name}, continuing without it: {e!r}"
             )
 
+    def reconcile_identity(self, author):
+        """Resolve ``author`` to a stable identity, migrating name-keyed state if
+        the username changed since we last saw this ID. Returns the current name.
+
+        See ADR 0001. Safe to call on every interaction — it is a dict lookup in
+        the common case and only touches disk on first sight or an actual rename.
+        """
+        uid = author.id
+        current = author.name
+        known = self.identities.get_name(uid)
+        if known is None:
+            self.identities.set(uid, current)
+            self.identities.save()
+        elif known != current:
+            self.logger.warning(
+                f"Detected rename for ID {uid}: '{known}' -> '{current}', migrating state"
+            )
+            self._migrate_user(known, current)
+            self.identities.set(uid, current)
+            self.identities.save()
+        return current
+
+    def _migrate_user(self, old, new):
+        """Carry all name-keyed state for a user from ``old`` to ``new``."""
+        conv_dir = f"persistence/{self.bot_name}_conversations"
+        renamed = migrate_conversation_files(conv_dir, old, new)
+        if renamed:
+            self.logger.info(
+                f"Migrated {len(renamed)} conversation file(s) from '{old}' to '{new}'"
+            )
+        if migrate_media_dir("persistence/media", old, new):
+            self.logger.info(f"Migrated media folder from '{old}' to '{new}'")
+
+        # In-memory conversation handler(s) loaded under the old name.
+        for conv in self.conversations:
+            if conv.user == old:
+                conv.user = new
+                conv.file_path = os.path.join(conv.dir_path, f"{new}.json")
+
+        if move_dict_key(self.white_list, old, new):
+            self.write_whitelist()
+        move_dict_key(self.pending_images, old, new)
+        move_dict_key(self.tasks, old, new)
+        if rekey_thread_entries(self.threads, old, new):
+            self.write_threads()
+
     async def message_handler(self, message):
         user_prompt, author, files = await unpack_message(message)
-        name = author.name
+        # Reconcile identity FIRST: a renamed admin must keep their whitelist
+        # permission (which is name-keyed) before the command check runs.
+        name = self.reconcile_identity(author)
         if f"{author.id}" in self.black_list:
             await author.send("You have no power here!")
             return
@@ -526,6 +589,75 @@ class GPTBot:
         if not self.queue_processing:
             self.queue_processing = True
             self.queue_task = asyncio.create_task(self.gpt_sending())
+
+    def _conversation_for_thread(self, thread_id):
+        """Return ``(username, author_id)`` for the thread, or ``(None, None)``."""
+        for entry in self.threads:
+            for uname, meta in entry.items():
+                if meta.get("thread_id") == thread_id:
+                    return uname, meta.get("author_id")
+        return None, None
+
+    async def handle_thread_message(self, message):
+        """A privileged user posting in a conversation thread injects their text
+        into that user's conversation as third-party (staff) input, then the bot
+        generates and sends a reply to the user. See ADR 0001 / feature spec.
+        """
+        # Mirrored user messages arrive as webhooks; ignore them and our own.
+        if message.webhook_id is not None:
+            return
+        content = (message.content or "").strip()
+        # Commands are handled in DMs only; plain chatter with no text is ignored.
+        if not content or content.startswith("!"):
+            return
+
+        staff = message.author
+        self.reconcile_identity(staff)
+        perm = self.white_list.get(staff.name)
+        if perm is None or int(perm) < self.THIRD_PARTY_PERM:
+            self.logger.info(
+                f"Ignoring thread message from {staff.name}: insufficient permission for third-party input"
+            )
+            return
+
+        _, author_id = self._conversation_for_thread(message.channel.id)
+        if author_id is None:
+            self.logger.warning(
+                f"Thread {message.channel.id} is not mapped to a conversation, ignoring staff input"
+            )
+            return
+
+        target = self.bot.get_user(author_id)
+        if target is None:
+            try:
+                target = await self.bot.fetch_user(author_id)
+            except discord.HTTPException as e:
+                self.logger.error(f"Could not resolve target user {author_id}: {e}")
+                return
+        # The target may themselves have renamed; reconcile so we use the right key.
+        target_name = self.reconcile_identity(target)
+
+        conv = None
+        for c in self.conversations:
+            if c.user == target_name:
+                conv = c
+                break
+        if conv is None:
+            conv = ConversationHandler(
+                target_name, self.bot_name, init_prompt=self.init_prompt, author=target
+            )
+            self.conversations.append(conv)
+        elif conv.author is None:
+            conv.author = target
+
+        staff_note = f"[staff note from {staff.name}]: {content}"
+        conv.update_user(staff_note)
+        conv.write_conversation()
+        self.logger.warning(
+            f"{staff.name} injected third-party input into {target_name}'s conversation"
+        )
+
+        await self.gpt_sending_user(target)
 
     @asynccontextmanager
     async def _safe_typing(self, author):
@@ -1236,6 +1368,7 @@ class GPTBot:
         intents.messages = True
         intents.guilds = True
         intents.members = True  # Required for on_member_join event
+        intents.message_content = True  # Required to read thread message text (privileged)
         self.bot = discord.Client(intents=intents)
 
         @self.bot.event
@@ -1246,11 +1379,15 @@ class GPTBot:
 
         @self.bot.event
         async def on_message(message):
-            if (
-                isinstance(message.channel, discord.DMChannel)
-                and message.author != self.bot.user
-            ):
+            if message.author == self.bot.user:
+                return
+            if isinstance(message.channel, discord.DMChannel):
                 await self.message_handler(message)
+            elif (
+                isinstance(message.channel, discord.Thread)
+                and message.channel.parent_id == self.channel_id
+            ):
+                await self.handle_thread_message(message)
 
         @self.bot.event
         async def on_member_join(member):

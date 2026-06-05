@@ -97,6 +97,27 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
 - `!reload_welcomed_users`: Reloads welcomed users list from disk.
 - `!check_welcome_status`: Shows auto-welcome status and statistics.
 
+## Username-change resilience
+
+Discord usernames are mutable but the numeric user ID is not. The bot keeps a
+stable identity registry (`persistence/identities_<BOT_NAME>.json`, `id -> current
+username`) and reconciles it on every incoming message. When a user renames
+themselves, all of their name-keyed state — conversation files, monitoring
+thread, whitelist permission, media folder — is migrated to the new name
+automatically on their next message, so the conversation history is never
+orphaned. The registry is bootstrapped from the existing thread map on startup,
+so users who renamed before this feature existed are recovered too. See
+[`docs/adr/0001-identity-resilience.md`](docs/adr/0001-identity-resilience.md).
+
+## Third-party (staff) input via threads
+
+A user whitelisted with permission ≥ 10 can post a plain message in a user's
+monitoring thread to inject it into that conversation as a staff note (recorded
+as `[staff note from <name>]: ...`). The bot then generates and DMs a reply to
+the user, letting staff steer a conversation in-line. Reading thread text
+requires the privileged **Message Content Intent** to be enabled in the Discord
+Developer Portal.
+
 ## TODO:  
 - Generate Fake receipts automatically.  
 - Fine-tune init_prompt for better stability.   
