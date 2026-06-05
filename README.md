@@ -83,6 +83,7 @@ This bot is fully dockerized and can be run using Docker. All configuration is h
 - `!save_all`: Saves all ongoing conversations.  
 - `!get_msg_log user_id`: Returns all DMs by a user.  
 - `!force_resend "name" ["message"]`: Tries to send the last message or a specified message.  
+- `!retrigger "name"`: Drops the last bot reply and regenerates a fresh GPT response (use when a reply failed to send, e.g. it exceeded Discord's 2000-character limit).  
 - `!load_author user_id`: Tries to load an author by ID (load the conversation first!).  
 - `!clear_memory`: Clears conversations from memory.  
 - `!ban user_id`: Bans users from interacting with the bot.  

@@ -139,6 +139,36 @@ def handle_args(message: str):
     return name, values
 
 
+def split_message(content: str | None, limit: int = 2000):
+    """Split content into chunks no longer than ``limit`` characters.
+
+    Discord rejects messages over 2000 characters (error 50035). We prefer to
+    break on a newline within the window, falling back to a space, and finally
+    to a hard cut if the window contains no separator. The separator we break
+    on is dropped so the joined chunks differ from the original only by removed
+    break characters. Returns an empty list for empty/None input.
+    """
+    if not content:
+        return []
+    chunks = []
+    remaining = content
+    while len(remaining) > limit:
+        window = remaining[:limit]
+        split_at = window.rfind("\n")
+        if split_at <= 0:
+            split_at = window.rfind(" ")
+        if split_at <= 0:
+            # No separator in window: hard cut, keep every character.
+            chunks.append(remaining[:limit])
+            remaining = remaining[limit:]
+        else:
+            chunks.append(remaining[:split_at])
+            remaining = remaining[split_at + 1:]
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
 def ensure_persistence_dir_exists(subfolder=None):
     if subfolder:
         dir_path = os.path.join("persistence", subfolder)

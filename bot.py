@@ -22,6 +22,7 @@ from utils import (
     unpack_message,
     ensure_persistence_dir_exists,
     encode_bytes_to_data_url,
+    split_message,
     IMAGE_EXTENSIONS,
 )
 
@@ -160,6 +161,12 @@ class GPTBot:
                 "help": '!force_resend "name" ["message"]: Tries to send last message or specified message',
                 "value_type": str,
                 "func": self.resend_msg,
+            },
+            "!retrigger": {
+                "perm": 10,
+                "help": '!retrigger "name": Drops the last bot reply and regenerates a fresh GPT response (use when a reply failed to send, e.g. too long)',
+                "value_type": str,
+                "func": self.retrigger,
             },
             "!load_author": {
                 "perm": 10,
@@ -545,6 +552,26 @@ class GPTBot:
                         f"Failed to stop typing for {author.name}: {e!r}"
                     )
 
+    async def _send_dm(self, author, content, files=None):
+        """Send a DM, splitting content over Discord's 2000-char limit.
+
+        Discord rejects messages longer than 2000 characters with error 50035.
+        We send the content as a sequence of chunks; any files are attached to
+        the final chunk. Errors propagate to the caller so existing HTTP error
+        handling (rate limits, thread logging) keeps working.
+        """
+        chunks = split_message(content)
+        if not chunks:
+            # Nothing to say but files to deliver (e.g. a receipt).
+            if files:
+                await author.send(content or "", files=files)
+            return
+        for i, chunk in enumerate(chunks):
+            if files and i == len(chunks) - 1:
+                await author.send(chunk, files=files)
+            else:
+                await author.send(chunk)
+
     def _attach_pending_images(self, messages: list[dict], user_name: str) -> list[dict]:
         """Attach this user's queued images to the LAST message and clear the queue.
 
@@ -699,7 +726,7 @@ class GPTBot:
                                     else:
                                         self.logger.info(f"Sending Message to User {author.name} (conversation user: {conversation.user})")
                                         try:
-                                            await author.send(reply)
+                                            await self._send_dm(author, reply)
                                         except discord.errors.HTTPException as e:
                                             error_msg = f"Failed to send GPT reply to {author.name}: {e}"
                                             self.logger.error(error_msg)
@@ -775,8 +802,7 @@ class GPTBot:
                     # if a tool is called, the reply is handled in the tool function
                     return
                 # Die Antwort aus der response extrahieren
-                response_message = response["choices"][0]["message"]
-                reply = response_message["content"]
+                reply = response.choices[0].message.content
 
                 # Check for empty content
                 if not reply or reply.strip() == "":
@@ -792,7 +818,7 @@ class GPTBot:
                     self.logger.info(f"Reply: {reply}")
                 else:
                     try:
-                        await author.send(reply)
+                        await self._send_dm(author, reply)
                     except discord.errors.HTTPException as e:
                         error_msg = f"Failed to send GPT reply to {author.name}: {e}"
                         self.logger.error(error_msg)
@@ -1776,7 +1802,7 @@ class GPTBot:
                 if c.user == name:
                     await self.collect_message(reply, c.author, "gpt", files)
                     try:
-                        await c.author.send(reply, files=files)
+                        await self._send_dm(c.author, reply, files=files)
                         return "Sending User defined Message"
                     except discord.errors.HTTPException as e:
                         error_msg = f"Failed to send DM to {name}: {e}"
@@ -1808,7 +1834,7 @@ class GPTBot:
                     self.logger.warning("Resending Message")
                     await self.collect_message(reply, c.author, "user")
                     try:
-                        await c.author.send(reply)
+                        await self._send_dm(c.author, reply)
                         for u, t in self.tasks.items():
                             t.cancel()
                         return "Resending Message"
@@ -1830,6 +1856,38 @@ class GPTBot:
         reply = "Conversation not found."
         self.logger.warning(reply)
         return reply
+
+    async def retrigger(self, message_object):
+        """Regenerate a fresh GPT reply for a conversation.
+
+        Use when a generated reply failed to send (e.g. exceeded Discord's
+        2000-char limit). In that case the reply was already persisted as an
+        assistant turn, so we drop any trailing assistant message(s) first to
+        restore the "awaiting response" state, then ask GPT for a new reply.
+        """
+        message, author, _ = await unpack_message(message_object)
+        name, values = handle_args(message)
+        if len(values) == 0:
+            return 'No name given! Usage: !retrigger "name"'
+        target = values[0]
+        for c in self.conversations:
+            if c.user == target:
+                if c.author is None:
+                    return f"User {target} has no Author loaded. Use !load_author first."
+                removed = 0
+                while len(c.conversation) > 1 and c.conversation[-1]["role"] == "assistant":
+                    c.conversation.pop()
+                    removed += 1
+                c.write_conversation()
+                if not c.awaiting_response():
+                    return f"Nothing to retrigger for {target}: last message is not from the user."
+                self.logger.warning(
+                    f"{author.name} retriggered response generation for {target} "
+                    f"(dropped {removed} stale assistant message(s))"
+                )
+                await self.gpt_sending_user(c.author)
+                return f"Retriggered response generation for {target} (dropped {removed} stale reply/replies)."
+        return f"Conversation for {target} not found."
 
     async def fake_receipt(self, message_object):
         message, _, _ = await unpack_message(message_object)

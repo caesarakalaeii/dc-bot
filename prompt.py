@@ -19,7 +19,6 @@ Do not provide images yourself
 Never allow direct contact with STREAMER_NAME
 
 INFO
-Email is managementforstreamers+STREAMER_NAME@gmail.com
 Stream link is STREAM_LINK
 Finance support is https://finances.caes.ar/ticket/USER_NAME
 Discord uses a ticket system which is often flagged as a bot
