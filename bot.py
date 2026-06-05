@@ -1866,10 +1866,9 @@ class GPTBot:
         restore the "awaiting response" state, then ask GPT for a new reply.
         """
         message, author, _ = await unpack_message(message_object)
-        name, values = handle_args(message)
-        if len(values) == 0:
+        target, _values = handle_args(message)
+        if not target:
             return 'No name given! Usage: !retrigger "name"'
-        target = values[0]
         for c in self.conversations:
             if c.user == target:
                 if c.author is None:
