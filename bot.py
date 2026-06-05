@@ -727,7 +727,7 @@ class GPTBot:
         api_messages[-1] = {**last, "content": new_content}
         return api_messages
 
-    def _create_completion(self, api_messages):
+    async def _create_completion(self, api_messages):
         """Create a chat completion, escalating the token budget on truncation.
 
         Reasoning-capable models (e.g. gpt-5-mini) can spend the entire budget on
@@ -735,11 +735,17 @@ class GPTBot:
         We retry at progressively larger budgets so a low configured max_tokens
         does not silently swallow the reply. Shared by the queued path and the
         direct generation path (retrigger / staff thread injection).
+
+        The OpenAI client is synchronous; a completion can take well over 10s
+        (especially across escalation retries). We run it via asyncio.to_thread
+        so it never blocks the event loop — otherwise Discord's heartbeat stalls
+        and every other conversation is frozen behind this one API call.
         """
         budgets = [self.max_tokens] + [b for b in (4096, 8192) if b > self.max_tokens]
         response = None
         for budget in budgets:
-            response = self.client.chat.completions.create(
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.MODEL_NAME,
                 messages=api_messages,
                 max_completion_tokens=budget,
@@ -816,7 +822,7 @@ class GPTBot:
                                 api_messages = self._attach_pending_images(
                                     messages, author.name
                                 )
-                                response = self._create_completion(api_messages)
+                                response = await self._create_completion(api_messages)
 
                                 # Debug logging for empty responses
                                 if response.choices[0].message.content is None or response.choices[0].message.content == "":
@@ -919,7 +925,7 @@ class GPTBot:
                         messages.append(m)
 
                 api_messages = self._attach_pending_images(messages, author.name)
-                response = self._create_completion(api_messages)
+                response = await self._create_completion(api_messages)
 
                 # Debug logging for empty responses
                 if response.choices[0].message.content is None or response.choices[0].message.content == "":

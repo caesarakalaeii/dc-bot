@@ -4,6 +4,8 @@ Reasoning models can return empty content with finish_reason 'length' when the
 configured max_tokens is too small; the helper must retry at larger budgets.
 """
 
+import asyncio
+
 import pytest
 
 from bot import GPTBot
@@ -47,21 +49,21 @@ def bot(tmp_path, monkeypatch):
 def test_no_escalation_when_first_response_complete(bot):
     bot.max_tokens = 256
     bot.client = FakeClient(["stop"])
-    bot._create_completion([{"role": "user", "content": "hi"}])
+    asyncio.run(bot._create_completion([{"role": "user", "content": "hi"}]))
     assert bot.client.chat.completions.budgets == [256]
 
 
 def test_escalates_to_4096_on_length(bot):
     bot.max_tokens = 256
     bot.client = FakeClient(["length", "stop"])
-    bot._create_completion([{"role": "user", "content": "hi"}])
+    asyncio.run(bot._create_completion([{"role": "user", "content": "hi"}]))
     assert bot.client.chat.completions.budgets == [256, 4096]
 
 
 def test_escalates_through_8192_when_still_truncated(bot):
     bot.max_tokens = 256
     bot.client = FakeClient(["length", "length", "length"])
-    resp = bot._create_completion([{"role": "user", "content": "hi"}])
+    resp = asyncio.run(bot._create_completion([{"role": "user", "content": "hi"}]))
     assert bot.client.chat.completions.budgets == [256, 4096, 8192]
     assert resp is not None
 
@@ -69,6 +71,6 @@ def test_escalates_through_8192_when_still_truncated(bot):
 def test_no_smaller_retries_when_max_tokens_already_large(bot):
     bot.max_tokens = 8192
     bot.client = FakeClient(["length"])
-    bot._create_completion([{"role": "user", "content": "hi"}])
+    asyncio.run(bot._create_completion([{"role": "user", "content": "hi"}]))
     # No rung is larger than 8192, so we don't pointlessly retry at 4096.
     assert bot.client.chat.completions.budgets == [8192]
