@@ -508,6 +508,9 @@ class GPTBot:
         # Reconcile identity FIRST: a renamed admin must keep their whitelist
         # permission (which is name-keyed) before the command check runs.
         name = self.reconcile_identity(author)
+        # The user made contact first: discard any scheduled welcome so they
+        # don't get an out-of-the-blue welcome mid-conversation.
+        self.cancel_welcome_task(author.id)
         if f"{author.id}" in self.black_list:
             await author.send("You have no power here!")
             return
@@ -1078,6 +1081,25 @@ class GPTBot:
             if member.id in self.welcome_tasks:
                 del self.welcome_tasks[member.id]
 
+    def cancel_welcome_task(self, user_id: int):
+        """Discard a pending scheduled welcome for a user.
+
+        Called when the user makes contact first (e.g. proactively DMs the
+        bot) so they don't receive an out-of-the-blue welcome mid-conversation
+        once the original delay elapses.
+        """
+        task = self.welcome_tasks.get(user_id)
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+            self.logger.info(
+                f"Cancelled pending welcome for {user_id} (user made contact first)"
+            )
+        # The task's own `finally` removes it from welcome_tasks, but cancellation
+        # is processed asynchronously; drop the reference now so re-entry is safe.
+        self.welcome_tasks.pop(user_id, None)
+
     async def reply_to_thread(self, thread_id, message, files=None, sender=None):
         """Send message to thread, using webhooks for user impersonation."""
         # Don't send empty messages
@@ -1450,14 +1472,7 @@ class GPTBot:
             )
 
             # Cancel pending welcome task if one exists
-            if member.id in self.welcome_tasks:
-                task = self.welcome_tasks[member.id]
-                if not task.done():
-                    task.cancel()
-                    self.logger.info(
-                        f"Cancelled pending welcome task for {member.name} ({member.id}) - user left server"
-                    )
-                # Task cleanup happens in the finally block of send_welcome_message
+            self.cancel_welcome_task(member.id)
 
             # Remove from welcomed_users to allow re-welcome on rejoin
             if member.id in self.welcomed_users:

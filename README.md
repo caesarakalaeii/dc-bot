@@ -118,6 +118,15 @@ the user, letting staff steer a conversation in-line. Reading thread text
 requires the privileged **Message Content Intent** to be enabled in the Discord
 Developer Portal.
 
+## Auto-welcome for new members
+
+When `AUTO_WELCOME_ENABLED=true`, a welcome DM is scheduled for each new member
+after a random 5–10 minute delay. The pending task is discarded if the user
+leaves the guild, or if the user makes contact first by proactively DMing the
+bot — so nobody receives an out-of-the-blue welcome in the middle of a
+conversation they already started. Welcomed users are tracked in
+`persistence/welcomed_users_<BOT_NAME>.json` to avoid re-welcoming on rejoin.
+
 ## TODO:  
 - Generate Fake receipts automatically.  
 - Fine-tune init_prompt for better stability.   
