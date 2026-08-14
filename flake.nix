@@ -20,7 +20,11 @@
   outputs =
     # `...` rather than a closed { self, nixpkgs }: adding a second input later
     # would otherwise fail with "called with unexpected argument 'self'".
-    { nixpkgs, ... }:
+    #
+    # `self` is taken because rootPreamble needs it: it is the only handle a
+    # store-resident wrapper has on "the repo this flake came from". See the
+    # anchor in that preamble.
+    { self, nixpkgs, ... }:
     let
       lib = nixpkgs.lib;
 
@@ -122,9 +126,25 @@
       # builds it with `docker build` against a daemon nix cannot supply. A
       # `build` verb here would only be able to lie about that.
       #
-      # `text` is bash under `set -euo pipefail`, shellcheck'd at BUILD time, and
-      # it runs in the caller's current directory so an agent can test
-      # uncommitted edits.
+      # `text` is bash under `set -euo pipefail` and shellcheck'd at BUILD time.
+      #
+      # THE ANCHORING INVARIANT, and it is not negotiable: a verb behaves the
+      # same no matter which directory it was invoked from, and never reads or
+      # writes a file outside this repo. So no verb may end in a bare "$@" --
+      # every tool here treats "no paths given" as "do it to the current
+      # directory", and the current directory belongs to the caller, not to us.
+      # `nix run /path/to/dc-bot#lint` from elsewhere used to print "All checks
+      # passed!" (zero files inspected) and `#fmt` used to REWRITE whatever
+      # happened to be sitting in the caller's cwd.
+      #
+      # Anchor with whatever form the tool actually accepts: `cd "$REPO_ROOT"`
+      # plus an explicit `.` for ruff, `cd` alone for a tool that insists on
+      # relative patterns. Explicit user arguments still win, so
+      # `nix run .#fmt -- bot.py` keeps working -- paths are then resolved from
+      # the repo root, which is also where an agent almost always already is.
+      # Uncommitted edits are still what gets linted and formatted: the anchor
+      # prefers the live work tree, and only falls back to the flake's own
+      # snapshot when the caller is nowhere near a checkout.
       commands = pkgs: {
         setup = {
           # pytest is installed alongside requirements.txt on purpose: the repo
@@ -133,9 +153,18 @@
           # requirements.txt lists runtime deps only, and there is no
           # requirements-dev.txt to add it to without touching the repo's own
           # dependency contract.
-          description = "(network) create .venv from requirements.txt, plus pytest for the test suite";
+          #
+          # --allow-existing, because without it uv treats "a .venv is already
+          # here" as a hard error ("A virtual environment already exists at:
+          # .venv") and exits 2 under `set -e` BEFORE `uv pip install` ever runs.
+          # That made the bootstrap verb fail on exactly the trees that need it
+          # most: every clone that has already been set up once, i.e. every
+          # re-run after a requirements.txt change and every agent retry loop.
+          # With the flag the venv is reused and the install re-resolves, so this
+          # verb is now idempotent -- run it as often as you like.
+          description = "(network) create/update .venv from requirements.txt, plus pytest for the test suite";
           text = ''
-            uv venv "$REPO_ROOT/.venv"
+            uv venv --allow-existing "$REPO_ROOT/.venv"
             uv pip install --python "$REPO_ROOT/.venv/bin/python" -r "$REPO_ROOT/requirements.txt" pytest
           '';
         };
@@ -148,6 +177,11 @@
           # .pytest_cache lands at the repo root) even when an agent invokes this
           # from a subdirectory. The tests themselves monkeypatch.chdir into a
           # tmp_path, so they never write into the work tree.
+          #
+          # This one already satisfied the anchoring invariant -- it names its
+          # target instead of trailing a bare "$@" -- so it is unchanged. Note
+          # "$REPO_ROOT" "$@" and not "''${@:-$REPO_ROOT}": extra pytest flags
+          # (`-- -q -k welcome`) have to compose with the target, not replace it.
           description = "run the pytest suite (needs `setup` first)";
           text = ''"$REPO_ROOT/.venv/bin/python" -m pytest "$REPO_ROOT" "$@"'';
         };
@@ -158,22 +192,59 @@
           # therefore exits 1 on an untouched checkout. That is the honest state
           # of the code, not a broken flake -- do not "fix" it by weakening the
           # command. Compare against `git stash` output before blaming a change.
-          description = "ruff check (exits 1 on the repo's pre-existing findings)";
-          text = ''ruff check "$@"'';
+          #
+          # `cd` + an explicit `.` rather than a bare "$@": ruff with no path
+          # argument lints the process's cwd, so invoked by flake URL from any
+          # other directory this reported on the CALLER's files -- normally none
+          # of them Python, hence a green "All checks passed!" from a gate that
+          # had inspected nothing. The cd also covers the flags-only case
+          # (`-- --statistics`), which a bare `"''${@:-$REPO_ROOT}"` would not.
+          #
+          # --no-cache when the anchor is not writable: ruff puts .ruff_cache
+          # next to the files it inspects, so on the snapshot anchor it aborted
+          # with "Failed to initialize cache ... Read-only file system" and exit
+          # 2 -- a gate that dies before looking at anything, which is the same
+          # lie as before wearing a different exit code. Nothing is lost: the
+          # snapshot path changes with its content, so its cache is never reused.
+          description = "ruff check the whole repo (exits 1 on the pre-existing findings)";
+          text = ''
+            cd "$REPO_ROOT"
+            cache=()
+            [ -w "$REPO_ROOT" ] || cache=(--no-cache)
+            ruff check "''${cache[@]}" "''${@:-.}"
+          '';
         };
         fmt = {
           # Formats the whole tree, which currently rewrites 11 of 22 files.
-          # Pass explicit paths (`nix run .#fmt -- bot.py`) to keep a diff
-          # reviewable, or `-- --check` to see what it would touch.
-          description = "ruff format (rewrites files)";
-          text = ''ruff format "$@"'';
+          # Pass explicit paths (`nix run .#fmt -- bot.py`, resolved from the
+          # repo root) to keep a diff reviewable, or `-- --check` to see what it
+          # would touch.
+          #
+          # Anchored exactly like lint, and this is the half that actually did
+          # damage: ruff format MUTATES. Invoked by flake URL from an unrelated
+          # directory, the old bare "$@" rewrote that directory's Python files.
+          #
+          # The guard is for the snapshot anchor in rootPreamble: if we fell back
+          # to the store there is no work tree to format, and refusing with one
+          # line beats 11 "Permission denied"s. It asks the actual question --
+          # can I write here? -- rather than matching /nix/store/*, so a
+          # read-only checkout gets the same clean refusal.
+          description = "ruff format the whole repo (rewrites files)";
+          text = ''
+            if [ ! -w "$REPO_ROOT" ]; then
+              echo "dev-fmt: $REPO_ROOT is not writable -- run this from inside a dc-bot checkout" >&2
+              exit 1
+            fi
+            cd "$REPO_ROOT"
+            ruff format "''${@:-.}"
+          '';
         };
         run = {
-          # This is the only command that cd's: every persistence path in the
-          # code (persistence/, persistence/logs/, persistence/media/) is
-          # cwd-relative, exactly as in the container where WORKDIR is /app.
-          # Without the cd, starting the bot from a subdirectory would silently
-          # fork a second set of conversation files.
+          # lint and fmt cd for anchoring; this one cd's because the CODE needs
+          # it. Every persistence path (persistence/, persistence/logs/,
+          # persistence/media/) is cwd-relative, exactly as in the container
+          # where WORKDIR is /app. Without the cd, starting the bot from a
+          # subdirectory would silently fork a second set of conversation files.
           #
           # run.sh is bypassed deliberately -- it decodes WHITE_LIST/BLACK_LIST
           # into hardcoded /app/persistence paths that do not exist outside the
@@ -185,6 +256,20 @@
           '';
         };
       };
+
+      # ======================================================================
+      # PER-REPO BLOCK 5 -- the work-tree fingerprint
+      # ======================================================================
+      # A path that exists at the root of a dc-bot checkout and is tracked, so
+      # it is present in a fresh clone and in the flake snapshot alike.
+      # rootPreamble uses it to answer "is the git work tree I just found
+      # actually THIS repo?", because `git rev-parse --show-toplevel` answers
+      # just as cheerfully from inside somebody else's checkout, and acting on
+      # that answer is how a `fmt` verb rewrites a stranger's files.
+      #
+      # bot_start.py is the entrypoint `run` already execs, so it cannot vanish
+      # without this flake needing an edit anyway.
+      repoMarker = "bot_start.py";
 
       # ======================================================================
       # GENERIC MACHINERY -- byte-identical in all 41 repos, do not edit
@@ -200,12 +285,38 @@
           export LD_LIBRARY_PATH="${lib.makeLibraryPath (nativeLibs pkgs)}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         '';
 
-      # Every command gets $REPO_ROOT. `nix run` and `nix develop` both start in
-      # whatever directory they were invoked from, so a bare `.venv` silently
-      # forks a second environment as soon as an agent works from a subdirectory.
-      # Note we do NOT cd there: commands act on the caller's cwd on purpose.
+      # Every command gets $REPO_ROOT, and every command anchors itself to it --
+      # see THE ANCHORING INVARIANT in block 4. `nix run` and `nix develop` both
+      # start in whatever directory they were invoked from, and a wrapper living
+      # in /nix/store has no way to learn which clone launched it, so the anchor
+      # is resolved here, once, and only two things can win:
+      #
+      #   1. the enclosing git work tree, but ONLY if repoMarker is in it. The
+      #      marker is the load-bearing half. The previous fallback was
+      #      `|| pwd`, which pointed every verb at the caller's directory
+      #      whenever that directory was outside git -- silent for `lint`,
+      #      destructive for `fmt` -- and a rev-parse without the marker check
+      #      would do the same inside an unrelated checkout.
+      #   2. ${self}, this flake's own source in the store. Same content as the
+      #      work tree (nix copies the tracked files, dirty ones included), so
+      #      `lint` still reports the truth about the right files from anywhere,
+      #      and because /nix/store is read-only there is no way for a mutating
+      #      verb to write outside the repo -- it refuses or it fails.
+      #
+      # Deliberately NOT honouring an inherited $REPO_ROOT: the dev shell exports
+      # one, and a shell entered by flake URL from outside the repo would then
+      # pin every later `dev-fmt` to the snapshot even after you cd into the real
+      # checkout. Each wrapper re-deriving the anchor is what makes the two
+      # surfaces agree.
+      #
+      # Naming `self` here is what ties the wrapper derivations to the source, so
+      # editing a tracked file re-derives them. They are five shellcheck runs on
+      # five short scripts; a couple of seconds is the price of the anchor.
       rootPreamble = ''
-        REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+        if [ ! -e "$REPO_ROOT/${repoMarker}" ]; then
+          REPO_ROOT="${self}"
+        fi
         export REPO_ROOT
       '';
 
